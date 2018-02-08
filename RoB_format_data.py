@@ -155,16 +155,40 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     return pd.DataFrame(d)
 
 
-increment_by = 100
-cur_start, cur_end = 0, 100
-N = 28432
+def put_together(outpath="RoB-data-2-all.csv"):
+    increment_by = 500
+    cur_start, cur_end = 0, 500
+    N = 28432
 
-while cur_start < N: 
-    # print ("cur_start: {0}; cur_end: {1}")
-    formatted_data = convert_df_to_training_data(study_range=[cur_start, cur_end])
-    formatted_data.to_csv("RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
-    cur_start += increment_by
-    cur_end += increment_by
+    df = None
+    while cur_start < N: 
+        # print ("cur_start: {0}; cur_end: {1}")
+        cur_df = pd.read_csv("RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
+
+        if df is None:
+            df = cur_df
+        else:
+            df = pd.concat(df, cur_df)
+        
+        cur_start += increment_by
+        cur_end += increment_by
+
+    df.to_csv(outpath)
+
+def main():
+    increment_by = 500
+    cur_start, cur_end = 0, 500
+    N = 28432
+
+    while cur_start < N: 
+        # print ("cur_start: {0}; cur_end: {1}")
+        formatted_data = convert_df_to_training_data(study_range=[cur_start, cur_end])
+        formatted_data.to_csv("RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
+        cur_start += increment_by
+        cur_end += increment_by
+
+if __name__ == "__main__": 
+    main()
 
 
 
