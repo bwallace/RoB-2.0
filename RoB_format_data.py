@@ -7,7 +7,7 @@ nlp = spacy.load('en')
 import fuzzywuzzy
 from fuzzywuzzy import fuzz
 
-data_path = "/Users/byron/Dropbox/cochranetech/rob2/RoB_data.csv"
+data_path = "data/RoB_data.csv"
 tp = pd.read_csv(data_path, chunksize=10000)
 df = pd.concat(tp, ignore_index=True)
 
