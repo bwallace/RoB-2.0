@@ -103,6 +103,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
             print ("on study {0}".format(index))
             
         full_text = row["fulltext"]
+        import pdb; pdb.set_trace()
  
         document = nlp(full_text)
         sentences = list(document.sents)
@@ -156,9 +157,9 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     return pd.DataFrame(d)
 
 
-increment_by = 100
-cur_start, cur_end = 0, 100
-N = 28432
+increment_by = 1
+cur_start, cur_end = 2429,2430
+N =  28432
 
 while cur_start < N: 
     # print ("cur_start: {0}; cur_end: {1}")
