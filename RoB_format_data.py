@@ -10,9 +10,7 @@ from fuzzywuzzy import fuzz
 data_path = "/Users/byron/Dropbox/cochranetech/rob2/RoB_data.csv"
 tp = pd.read_csv(data_path, chunksize=10000)
 df = pd.concat(tp, ignore_index=True)
-
-doc = nlp(df['fulltext'].values[0])
-sentences = list(doc.sents)
+df = df.dropna(subset=["fulltext"]) # drop rows where we don't have full texts
 
 def get_col_names(domain_str):
     return (domain_str + "-judgment", domain_str + "-rationale")  
@@ -67,6 +65,7 @@ def is_sent_match(rationale, candidate, threshold=90, min_k=5):
 '''
 Consume RoB data in the CSV; convert to RA-CNN style data.
 '''
+MAX_FT_LEN = 15000 # covers 99%+ of cases; there is one outlier with 2902523, which breaks things...
 def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     
     if study_range is None: 
@@ -102,7 +101,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
         if (index % 10) == 0:
             print ("on study {0}".format(index))
             
-        full_text = row["fulltext"]
+        full_text = row["fulltext"][:MAX_FT_LEN]
  
         document = nlp(full_text)
         sentences = list(document.sents)
