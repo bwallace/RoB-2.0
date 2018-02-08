@@ -67,8 +67,13 @@ def is_sent_match(rationale, candidate, threshold=90, min_k=5):
 '''
 Consume RoB data in the CSV; convert to RA-CNN style data.
 '''
-def convert_df_to_training_data(path="RoB_data.csv", domain="Random sequence generation"):
+def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     
+    if study_range is None: 
+        study_range = (0, 100)
+    start_idx, end_idx = study_range 
+    print ("starting on: {0}; ending on {1}".format(start_idx, end_idx))
+
     domain_name_map = {"bpp":"Blinding of participants and personnel", 
                        "rsg":"Random sequence generation",
                        "ac":"Allocation concealment",
@@ -92,7 +97,8 @@ def convert_df_to_training_data(path="RoB_data.csv", domain="Random sequence gen
          
     outcome_categories = ["mortality", "objective", "subjective", "all"]
     
-    for index, row in list(df.iterrows()):
+    rows_to_process = list(df.iterrows())[start_idx:end_idx]
+    for index, row in rows_to_process:
         if (index % 10) == 0:
             print ("on study {0}".format(index))
             
@@ -150,8 +156,16 @@ def convert_df_to_training_data(path="RoB_data.csv", domain="Random sequence gen
     return pd.DataFrame(d)
 
 
-formatted_data = convert_df_to_training_data()
-formatted_data.to_csv("RoB-data-2.csv")
+increment_by = 100
+cur_start, cur_end = 0, 100
+N = 28432
+
+while cur_start < N: 
+    # print ("cur_start: {0}; cur_end: {1}")
+    formatted_data = convert_df_to_training_data(study_range=[cur_start, cur_end])
+    formatted_data.to_csv("RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
+    cur_start += increment_by
+    cur_end += increment_by
 
 
 
