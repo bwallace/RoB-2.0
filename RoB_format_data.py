@@ -79,7 +79,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     # here we construct a dictionary to be converted to a DataFrame
     # for output.
     # note that RSG and AC are only overall.
-    d = {"pmid":[], "sentence":[], 
+    d = {"pmid":[], "doi":[], "sentence":[], 
          "rsg-rationale":[], "rsg-doc-judgment":[],
          "ac-rationale":[], "ac-doc-judgment":[], 
          "bpp-rationale-all":[], "bpp-doc-judgment-all":[],
