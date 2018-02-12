@@ -11,6 +11,7 @@ data_path = "data/RoB_data.csv"
 tp = pd.read_csv(data_path, chunksize=10000)
 df = pd.concat(tp, ignore_index=True)
 df = df.dropna(subset=["fulltext"]) # drop rows where we don't have full texts
+df = df.drop(['Unnamed: 0'], axis=1)
 
 def get_col_names(domain_str):
     return (domain_str + "-judgment", domain_str + "-rationale")  
@@ -68,10 +69,6 @@ Consume RoB data in the CSV; convert to RA-CNN style data.
 MAX_FT_LEN = 15000 # covers 99%+ of cases; there is one outlier with 2902523, which breaks things...
 def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     
-    if study_range is None: 
-        study_range = (0, 100)
-    start_idx, end_idx = study_range 
-    print ("starting on: {0}; ending on {1}".format(start_idx, end_idx))
 
     domain_name_map = {"bpp":"Blinding of participants and personnel", 
                        "rsg":"Random sequence generation",
@@ -96,7 +93,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
          
     outcome_categories = ["mortality", "objective", "subjective", "all"]
     
-    rows_to_process = list(df.iterrows())[start_idx:end_idx]
+    rows_to_process = list(df.iterrows())
     for index, row in rows_to_process:
         if (index % 10) == 0:
             print ("on study {0}".format(index))
@@ -108,7 +105,15 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
         is_rationale = []
         for sent in sentences:
             sent = sent.string
-            d["pmid"].append(row["pmid"])
+            cur_pmid = row["pmid"]
+            if pd.isnull(cur_pmid):
+                cur_pmid = 0
+
+            cur_doi = row["doi"]
+            if pd.isnull(cur_doi):
+                cur_pmid = "missing"
+
+            d["pmid"].append(cur_pmid) 
             d["sentence"].append(sent)
             
             for abbrv, domain in list(domain_name_map.items()):
@@ -151,7 +156,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
                         else:
                             d[rationale_field_key].append(0)
                             
-                
+    
     return pd.DataFrame(d)
 
 
@@ -177,6 +182,10 @@ def put_together(outpath="data/RoB-data-2-all.csv"):
     df.to_csv(outpath)
 
 def main():
+    formatted_data = convert_df_to_training_data()
+    formatted_data.to_csv("RoB-data-4.csv")
+    
+    '''
     increment_by = 500
     cur_start, cur_end = 0, 500
     N = 28432
@@ -187,6 +196,15 @@ def main():
         formatted_data.to_csv("data/RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
         cur_start += increment_by
         cur_end += increment_by
+    '''
+
+def train_dev_test_split(RA_CNN_data_path="data/RoB-data-3-all.csv"):
+    ####
+    #  First pull out duplicates. Priority is to identify based on PMIDs, then default to DOI. 
+    ####
+    # df is the original data file that we formatted! 
+    all_data = pd.read_csv(RA_CNN_data_path) 
+
 
 if __name__ == "__main__": 
     main()
