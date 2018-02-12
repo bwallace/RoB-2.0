@@ -93,9 +93,9 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
          
     outcome_categories = ["mortality", "objective", "subjective", "all"]
     
-    rows_to_process = list(df.iterrows())
+    rows_to_process = list(df.iterrows())[:10000]
     for index, row in rows_to_process:
-        if (index % 10) == 0:
+        if (index % 50) == 0:
             print ("on study {0}".format(index))
             
         full_text = row["fulltext"][:MAX_FT_LEN]
@@ -111,8 +111,9 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
 
             cur_doi = row["doi"]
             if pd.isnull(cur_doi):
-                cur_pmid = "missing"
+                cur_doi = "missing"
 
+            d["doi"].append(cur_doi)
             d["pmid"].append(cur_pmid) 
             d["sentence"].append(sent)
             
@@ -185,6 +186,12 @@ def main():
     formatted_data = convert_df_to_training_data()
     formatted_data.to_csv("RoB-data-4.csv")
     
+
+    # create a doc_id category: this is PMID where available, else DOI
+    # if both unavailable (???) drop
+    # ASSUMPTION: no PMID -> not in PMID
+    formatted_data.to_csv("RoB-data-4.csv")
+
     '''
     increment_by = 500
     cur_start, cur_end = 0, 500
@@ -197,6 +204,8 @@ def main():
         cur_start += increment_by
         cur_end += increment_by
     '''
+
+
 
 def train_dev_test_split(RA_CNN_data_path="data/RoB-data-3-all.csv"):
     ####
