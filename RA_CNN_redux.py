@@ -370,7 +370,7 @@ class RationaleCNN:
 
         #####
         # Now, we build a doc-level output for each outcome type
-        doc_outputs = []
+        doc_outputs, doc_losses = [], []
         for (sent_output_str, doc_output_str) in zip(SENT_OUTCOMES, DOC_OUTCOMES):
             ## need to access layer named "sentence_predictions-{0}".format(sent_output_name)
             sent_weights_for_outcome = outcomes_to_sent_models[sent_output_str]
@@ -384,11 +384,14 @@ class RationaleCNN:
             # trim extra dim
             doc_vector_for_outcome = Reshape((total_sentence_dims,), name="reshaped_doc_{0}".format(doc_output_str))(doc_vector_for_outcome)
             doc_vector_for_outcome = Dropout(self.doc_dropout, name="doc_v_dropout_{0}".format(doc_output_str))(doc_vector_for_outcome)
-            # @TODO this should be three way (low, high/unclear or MISSING)
-            doc_output_for_outcome = Dense(1, activation="sigmoid", name="doc_prediction_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            # output space is: [low, high/unclear, missing]
+            doc_output_for_outcome = Dense(3, activation="softmax", name="doc_prediction_{0}".format(doc_output_str))(doc_vector_for_outcome)
             doc_outputs.append(doc_output_for_outcome)
+            doc_losses.append("categorical_crossentropy")
 
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
+        self.doc_model.compile(loss=doc_losses, optimizer="adam")
+        print(self.doc_model.summary())
         import pdb; pdb.set_trace()
 
         '''
@@ -441,8 +444,8 @@ class RationaleCNN:
         self.set_final_sentence_model()
         
         '''
-        print("rationale CNN model: ")
-        print(self.doc_model.summary())
+        
+        
 
 
     def set_final_sentence_model(self):
