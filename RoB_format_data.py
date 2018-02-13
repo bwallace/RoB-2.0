@@ -79,7 +79,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     # here we construct a dictionary to be converted to a DataFrame
     # for output.
     # note that RSG and AC are only overall.
-    d = {"pmid":[], "doi":[], "sentence":[], 
+    d = {"pmid":[], "doi":[], "doc_id": [], "sentence":[], 
          "rsg-rationale":[], "rsg-doc-judgment":[],
          "ac-rationale":[], "ac-doc-judgment":[], 
          "bpp-rationale-all":[], "bpp-doc-judgment-all":[],
@@ -93,7 +93,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
          
     outcome_categories = ["mortality", "objective", "subjective", "all"]
     
-    rows_to_process = list(df.iterrows())[:10000]
+    rows_to_process = list(df.iterrows())
     for index, row in rows_to_process:
         if (index % 50) == 0:
             print ("on study {0}".format(index))
@@ -113,10 +113,18 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
             if pd.isnull(cur_doi):
                 cur_doi = "missing"
 
+            if cur_pmid == 0 and cur_doi == "missing":
+                import pdb; pdb.set_trace()
+            elif cur_pmid != 0:
+                doc_id = str(int(cur_pmid))
+            else:
+                doc_id = cur_doi 
+
             d["doi"].append(cur_doi)
             d["pmid"].append(cur_pmid) 
             d["sentence"].append(sent)
-            
+            d["doc_id"].append(doc_id)
+
             for abbrv, domain in list(domain_name_map.items()):
                 domain_rationale, rationale_field_key = None, None
                 if abbrv in ["rsg", "ac"]:
@@ -209,6 +217,24 @@ def train_dev_test_split(RA_CNN_data_path="data/RoB-data-3-all.csv"):
     # df is the original data file that we formatted! 
     all_data = pd.read_csv(RA_CNN_data_path) 
 
+
+
+def get_duplicate_ids():
+    '''
+    Assemble data for testing
+    '''
+    orig_df = pd.read_csv("data/RoB-data-w-uids.csv")
+    duplicate_uids = []
+    for idx, row in orig_df.iterrows():
+        cur_cdno = row['cdno']
+        cur_uid = row['uid']
+        # duplicates are studies w/same uid but in *different*
+        # review
+        cur_duplicates = orig_df[(orig_df['uid'] == cur_uid) & (orig_df['cdno'] != cur_cdno)]
+        if len(cur_duplicates) > 0:
+            duplicate_uids.append(cur_uid)
+
+    return list(set(duplicate_uids))
 
 if __name__ == "__main__": 
     main()
