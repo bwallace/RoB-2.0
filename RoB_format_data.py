@@ -122,7 +122,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
                 doc_id = cur_doi 
             '''
 
-            d["doc_id"].append(row["doc_id"])
+            d["doc_id"].append(row["uid"])
             d["doi"].append(cur_doi)
             d["pmid"].append(cur_pmid) 
             d["sentence"].append(sent)
