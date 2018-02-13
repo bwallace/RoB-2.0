@@ -93,7 +93,7 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
          
     outcome_categories = ["mortality", "objective", "subjective", "all"]
     
-    rows_to_process = list(df.iterrows())[:10000]
+    rows_to_process = list(df.iterrows())
     for index, row in rows_to_process:
         if (index % 50) == 0:
             print ("on study {0}".format(index))
