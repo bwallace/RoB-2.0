@@ -11,7 +11,7 @@ data_path = "/Users/byron/Dropbox/cochranetech/rob2/RoB_data.csv"
 tp = pd.read_csv(data_path, chunksize=10000)
 df = pd.concat(tp, ignore_index=True)
 df = df.dropna(subset=["fulltext"]) # drop rows where we don't have full texts
-df = df.drop(['Unnamed: 0'], axis=1)
+#df = df.drop(['Unnamed: 0'], axis=1)
 
 def get_col_names(domain_str):
     return (domain_str + "-judgment", domain_str + "-rationale")  
@@ -113,17 +113,20 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
             if pd.isnull(cur_doi):
                 cur_doi = "missing"
 
+            '''
             if cur_pmid == 0 and cur_doi == "missing":
                 import pdb; pdb.set_trace()
             elif cur_pmid != 0:
                 doc_id = str(int(cur_pmid))
             else:
                 doc_id = cur_doi 
+            '''
 
+            d["doc_id"].append(row["doc_id"])
             d["doi"].append(cur_doi)
             d["pmid"].append(cur_pmid) 
             d["sentence"].append(sent)
-            d["doc_id"].append(doc_id)
+            #d["doc_id"].append(doc_id)
 
             for abbrv, domain in list(domain_name_map.items()):
                 domain_rationale, rationale_field_key = None, None
