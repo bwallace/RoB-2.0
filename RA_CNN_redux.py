@@ -38,6 +38,14 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.constraints import maxnorm
 from keras.regularizers import l2
 
+OUTCOME_TYPES = ["all", "mortality", "objective", "subjective"]
+DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
+                    ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
+                    ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
+            
+SENT_OUTCOMES = ["ac-rationale", "rsg-rationale"]  + \
+                    ["boa-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
+                    ["bpp-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
 class RationaleCNN:
 
     def __init__(self, preprocessor, filters=None, n_filters=32, 
@@ -225,7 +233,6 @@ class RationaleCNN:
             
             convolutions.append(r)
 
-        #sent_vectors = merge(convolutions, name="sentence_vectors", mode="concat")
         sent_vectors = concatenate(convolutions, name="sentence_vectors")
         sent_vectors = Dropout(self.sent_dropout, name="dropout")(sent_vectors)
 
@@ -315,9 +322,23 @@ class RationaleCNN:
         sent_vectors = merge(convolutions, name="sentence_vectors", mode="concat")
  
         ####
-        # Here is where we need to modify things; I think we'll have one sentence 
-        # pred layer per domain
+        # one (intermediate) output layer per rationale-type
+        # @TODO share more within domains? 
+        sentence_outputs, sentence_losses = [], []
+
+        for sent_output_name in SENT_OUTCOMES:
+            sent_output_layer = Dense(1, activation="sigmoid", name=sent_output_name)
+            sent_output_preds = TimeDistributed(sent_output_layer, name="sentence_predictions-{0}".format(sent_output_name))(sent_vectors)
+            sentence_outputs.append(sent_output_preds)
+            sentence_losses.append("binary_crossentropy")
         
+        outcomes_to_sent_models = dict(zip(SENT_OUTCOMES, sentence_outputs))
+        self.sentence_model = Model(inputs=tokens_input, outputs=sentence_outputs)
+        self.sentence_model.compile(optimizer="adagrad", loss=sentence_losses)
+        print (self.sentence_model.summary())
+
+        
+        '''
         sent_pred_model = Dense(3, activation="softmax", name="sentence_prediction", kernel_regularizer=l2(0.01))
         sent_preds = TimeDistributed(sent_pred_model, name="sentence_predictions")(sent_vectors)
         self.sentence_model = Model(inputs=tokens_input, outputs=sent_preds)
@@ -325,9 +346,52 @@ class RationaleCNN:
                                     metrics=["accuracy"], 
                                     optimizer="adagrad")
         print (self.sentence_model.summary())
-        
+        '''
 
-        
+
+
+
+        # these are two helpers for scaling sentence vectors by rationale weights
+        def scale_merge(inputs):
+            sent_vectors, sent_weights = inputs[0], inputs[1]
+            return K.batch_dot(sent_vectors, sent_weights)
+
+        def scale_merge_output_shape(input_shape):
+            # this is expected now to be (None x sentence_vec_length x doc_length)
+            # or, e.g., (None, 96, 200)
+            input_shape_ls = list(input_shape)[0]
+            # should be (batch x sentence embedding), e.g., (None, 96)
+            return (input_shape_ls[0], input_shape_ls[1])
+
+
+        # sent vectors will be, e.g., (None, 200, 96)
+        # -> reshuffle for dot product below in merge -> (None, 96, 200)
+        sent_vectors = Permute((2, 1), name="permuted_sent_vectors")(sent_vectors)
+
+        #####
+        # Now, we build a doc-level output for each outcome type
+        doc_outputs = []
+        for (sent_output_str, doc_output_str) in zip(SENT_OUTCOMES, DOC_OUTCOMES):
+            ## need to access layer named "sentence_predictions-{0}".format(sent_output_name)
+            sent_weights_for_outcome = outcomes_to_sent_models[sent_output_str]
+
+            # each outcome type will now get its own doc_vector, as per its weights
+            doc_vector_for_outcome = merge([sent_vectors, sent_weights_for_outcome], 
+                                        name="doc_vector_{0}".format(doc_output_str),
+                                        mode=scale_merge,
+                                        output_shape=scale_merge_output_shape)
+
+            # trim extra dim
+            doc_vector_for_outcome = Reshape((total_sentence_dims,), name="reshaped_doc_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            doc_vector_for_outcome = Dropout(self.doc_dropout, name="doc_v_dropout_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            # @TODO this should be three way (low, high/unclear or MISSING)
+            doc_output_for_outcome = Dense(1, activation="sigmoid", name="doc_prediction_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            doc_outputs.append(doc_output_for_outcome)
+
+        self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
+        import pdb; pdb.set_trace()
+
+        '''
         #### 
         # this whole block needs to be updated to have per-outcome weights
         # i think: (1) modify to 0/1 (sigmoid); (2) have one per outcome type
@@ -362,9 +426,11 @@ class RationaleCNN:
         doc_vector = Dropout(self.doc_dropout, name="doc_v_dropout")(doc_vector)
 
         doc_output = Dense(1, activation="sigmoid", name="doc_prediction")(doc_vector)
-        
+        '''
         
         # ok so i think just need to attach multiple outputs
+
+        '''
         self.doc_model = Model(inputs=tokens_input, outputs=doc_output)
         self.doc_model.compile(metrics=["accuracy", 
                                         RationaleCNN.metric_func_maker(metric_name="f"), 
@@ -373,7 +439,8 @@ class RationaleCNN:
                                 loss="binary_crossentropy", optimizer="adam")
 
         self.set_final_sentence_model()
-
+        
+        '''
         print("rationale CNN model: ")
         print(self.doc_model.summary())
 
@@ -509,7 +576,6 @@ class RationaleCNN:
                 self.sentence_model.fit(X_temp, y_sent_temp, epochs=1)
 
                 cur_val_results = self.sentence_model.evaluate(X_doc_validation, y_sent_validation)
-                #import pdb; pdb.set_trace()
                 out_str = ["%s: %s" % (metric, val) for metric, val in zip(self.sentence_model.metrics_names, cur_val_results)]
                 print ("\n".join(out_str))
 
@@ -523,7 +589,6 @@ class RationaleCNN:
                     print("new best sentence accuracy: %s\n" % best_acc)
                     print("new best sentence loss: %s\n" % best_loss)
 
-                #import pdb; pdb.set_trace()
         else:
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=sentence_model_weights_path, 
@@ -641,18 +706,24 @@ class RationaleCNN:
 
 class Document:
     def __init__(self, doc_id, sentences, doc_lbl_dict=None, 
-                    sentences_lbl_dicts=None, min_sent_len=3):
+                    sentence_lbl_dicts=None, min_sent_len=3):
         self.doc_id = doc_id
         self.doc_y_dict = doc_lbl_dict
 
-        self.sentences, self.sentences_y_vects = [], []
+        ###
+        # each sentence is associated with multiple (named) 
+        # outputs; these are binary indicators that encode whether
+        # said sentence constitutes a rationale for the respective
+        # domain RoB judgments.
+        ###
+        self.sentences, self.sentence_y_dicts = [], []
         for idx, s in enumerate(sentences):
             if len(s.split(" ")) >= min_sent_len:
                 self.sentences.append(s)
-                if not sentences_lbl_dicts is None:
+                if not sentence_lbl_dicts is None:
                     #sent_y_vec = sent_lbl_dict_to_vec(sentences_labels[idx])
                     #self.sentences_y_vects.append(sentences_labels[idx])
-                    pass 
+                    self.sentence_y_dicts.append(sentence_lbl_dicts[idx])
 
         self.sentence_sequences = None
         # length, pre-padding!
