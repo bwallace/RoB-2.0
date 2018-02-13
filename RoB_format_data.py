@@ -7,7 +7,7 @@ nlp = spacy.load('en')
 import fuzzywuzzy
 from fuzzywuzzy import fuzz
 
-data_path = "data/RoB-data.csv"
+data_path = "data/RoB-data-w-uids.csv"
 tp = pd.read_csv(data_path, chunksize=10000)
 df = pd.concat(tp, ignore_index=True)
 df = df.dropna(subset=["fulltext"]) # drop rows where we don't have full texts
