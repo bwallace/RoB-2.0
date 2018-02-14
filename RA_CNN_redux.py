@@ -325,10 +325,13 @@ class RationaleCNN:
         # one (intermediate) output layer per rationale-type
         # @TODO share more within domains? 
         sentence_outputs, sentence_losses = [], []
-
+        self.sentence_layer_names = [] # keep around for later access
         for sent_output_name in SENT_OUTCOMES:
             sent_output_layer = Dense(1, activation="sigmoid", name=sent_output_name)
-            sent_output_preds = TimeDistributed(sent_output_layer, name="sentence_predictions-{0}".format(sent_output_name))(sent_vectors)
+            # was pre-fixing w/ "sentence_predictions-"
+            cur_sent_layer_name = "{0}".format(sent_output_name)
+            self.sentence_layer_names.append(cur_sent_layer_name)
+            sent_output_preds = TimeDistributed(sent_output_layer, name=cur_sent_layer_name)(sent_vectors)
             sentence_outputs.append(sent_output_preds)
             sentence_losses.append("binary_crossentropy")
         
@@ -392,8 +395,11 @@ class RationaleCNN:
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
         self.doc_model.compile(loss=doc_losses, optimizer="adam")
         print(self.doc_model.summary())
-        import pdb; pdb.set_trace()
 
+
+        self.set_final_sentence_model()
+
+       
         '''
         #### 
         # this whole block needs to be updated to have per-outcome weights
@@ -452,9 +458,11 @@ class RationaleCNN:
         '''
         allow convenient access to sentence-level predictions, after training
         '''
-        sent_prob_outputs = self.doc_model.get_layer("sentence_predictions")
+        #sent_prob_outputs = self.doc_model.get_layer("sentence_predictions")
+        sent_prob_outputs = []
+
         sent_model = K.function(inputs=self.doc_model.inputs + [K.learning_phase()], 
-                        outputs=[sent_prob_outputs.output])
+                        outputs=[self.doc_model.get_layer(sent_layer_name).output for sent_layer_name in self.sentence_layer_names])
         self.sentence_prob_model = sent_model
 
 
@@ -491,6 +499,32 @@ class RationaleCNN:
 
         return (doc_pred, rationales)
 
+    @staticmethod
+    def _doc_contains_at_least_one_rationale(sentence_lbl_dicts):
+        for y_d in sentence_lbl_dicts:
+            if any([y_d_j > 0 for y_d_j in y_d.values()]):
+                return True
+
+        return False 
+
+    @staticmethod
+    def _combine_dicts(dictionaries):
+        '''
+        Merge all dictionaries in list ds into a 
+        single dictionary. Assumes these have the same
+        set of keys!
+        '''
+        combined_dict = {}
+        keys = dictionaries[0].keys()
+        
+        for key in keys:
+            field_vals = []
+            for dict in dictionaries: 
+                if key not in dict:
+                    print ("Ah! {0} not in {1}".format(key, dict))
+                field_vals.append(dict[key])
+            combined_dict[key] = field_vals
+        return combined_dict
 
     def train_sentence_model(self, train_documents, nb_epoch=5, 
                                 downsample=True, 
@@ -510,22 +544,55 @@ class RationaleCNN:
     
         #######
         # build the train and validation sets
-        # @TODO redundant blocks...
+        # @TODO fix redundant blocks
         ######
         X_doc, y_sent, train_sentences = [], [], []
+
+        y_sent_lbls_dict = {}
+        for s_layer_name in self.sentence_layer_names:
+            y_sent_lbls_dict[s_layer_name] = []
+
         for d in train_documents[:-validation_size]:
-            cur_X, cur_sent_y = d.get_padded_sequences(self.preprocessor)
-            if np.max(cur_sent_y[:,:2]) > 0:            
+            cur_X, cur_sent_y_dict = d.get_padded_sequences(self.preprocessor)
+            
+            if RationaleCNN._doc_contains_at_least_one_rationale(cur_sent_y_dict):
                 X_doc.append(cur_X)
-                y_sent.append(cur_sent_y)
+                #y_sent_dicts.append(RationaleCNN._combine_dicts(cur_sent_y_dict))
+                combined_dict = RationaleCNN._combine_dicts(cur_sent_y_dict)
+
+                #y_target = []
+                for t in combined_dict:
+                    #y_target.append(np.array(combined_dict[t]))
+                    y_sent_lbls_dict[t].append(np.array(combined_dict[t]))
+
                 train_sentences.append(d.padded_sentences)
+                #y_sent.append(y_target)
+
+
+            #if np.max(cur_sent_y[:,:2]) > 0:            
+            #    X_doc.append(cur_X)
+            #    y_sent.append(cur_sent_y)
+            #    train_sentences.append(d.padded_sentences)
 
         X_doc = np.array(X_doc)
-        y_sent = np.array(y_sent)
+        n_docs, num_sents, sent_len = X_doc.shape
+        for outcome_key in y_sent_lbls_dict.keys():
+            arr_lbls = np.array(y_sent_lbls_dict[outcome_key])
+            y_sent_lbls_dict[outcome_key] = arr_lbls.reshape(n_docs, num_sents, 1)
 
-
-        X_doc_validation, y_sent_validation, validation_sentences = [], [], []
+        #y_sent = RationaleCNN._combine_dicts(y_sent_dicts)
+        #y_sent = y_sent_dicts
+        #y_sent = y_target
+ 
+        X_doc_validation, y_sent_dicts_validation, validation_sentences = [], [], []
         for d in train_documents[-validation_size:]:
+            cur_X, cur_sent_y_dict = d.get_padded_sequences(self.preprocessor)
+            if RationaleCNN._doc_contains_at_least_one_rationale(cur_sent_y_dict):
+                X_doc_validation.append(cur_X)
+                y_sent_dicts_validation.append(RationaleCNN._combine_dicts(cur_sent_y_dict))
+                validation_sentences.append(d.padded_sentences)
+
+            '''
             cur_X, cur_sent_y = d.get_padded_sequences(self.preprocessor)
             if np.max(cur_sent_y[:,:2]) > 0:
                 # 12/13: only validate on samples that actually have at 
@@ -533,11 +600,14 @@ class RationaleCNN:
                 X_doc_validation.append(cur_X)
                 y_sent_validation.append(cur_sent_y)
                 validation_sentences.append(d.padded_sentences)
+            '''
         X_doc_validation = np.array(X_doc_validation)
-        y_sent_validation = np.array(y_sent_validation)
+        y_sent_validation = y_sent_dicts_validation
 
+        #y_sent_validation = RationaleCNN._combine_dicts(y_sent_dicts_validation)
+        #y_sent_validation = np.array(y_sent_validation)
 
-
+        import pdb; pdb.set_trace()
         if downsample:
             print("downsampling!")
 
@@ -754,20 +824,27 @@ class Document:
         self.padded_sentences = self.sentences + [''] * (p.max_doc_len - self.n)
 
 
-    def get_padded_sequences_for_X_y(self, p, X, y):
+    def get_padded_sequences_for_X_y(self, p, X, y_dicts):
         n_sentences = X.shape[0]
+        y = None
         if n_sentences > p.max_doc_len:
             X = X[:p.max_doc_len]
-            y = y[:p.max_doc_len]
+            y = y_dicts[:p.max_doc_len]
         elif n_sentences < p.max_doc_len:
-            #dummy_rows = p.max_features * np.ones((p.max_doc_len-n_sentences, p.max_sent_len), dtype='int32') 
             dummy_rows = 0 * np.ones((p.max_doc_len-n_sentences, p.max_sent_len), dtype='int32')
             X = np.vstack((X, dummy_rows))
         
-            dummy_lbls = [np.array([0,0,1]) for _ in range(p.max_doc_len-n_sentences)]
-            y = np.vstack((y, dummy_lbls))
+            # for padded rows (which represent sentences), create all-zero label dictionaries
+            dummy_sent_lbl_dict = {}
+            for sent_output_name in SENT_OUTCOMES:
+                cur_sent_layer_name = "{0}".format(sent_output_name)
+                dummy_sent_lbl_dict[cur_sent_layer_name] = 0.0 
 
-        return np.array(X), np.array(y)
+            dummy_lbls = [dummy_sent_lbl_dict]*(p.max_doc_len-n_sentences)
+            y = y_dicts + dummy_lbls
+            
+
+        return np.array(X), y
 
     def get_padded_sequences_for_X(self, p, X):
         n_sentences = X.shape[0]
@@ -786,9 +863,9 @@ class Document:
         #n_sentences = self.sentence_sequences.shape[0]
         X = self.sentence_sequences
 
-        if labels_too:
-            y = self.sentences_y
-            return self.get_padded_sequences_for_X_y(p, X, y)
+        if labels_too:    
+            y_dicts = self.sentence_y_dicts
+            return self.get_padded_sequences_for_X_y(p, X, y_dicts)
 
         # otherwise only return X
         return self.get_padded_sequences_for_X(p, X)
