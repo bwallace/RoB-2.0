@@ -144,6 +144,53 @@ class RationaleCNN:
         shape = list(input_shape)
         return tuple((1, shape[-1]))
 
+
+    @staticmethod
+    def balanced_sample_MT(X, y_sent_lbls_dict, doc_idx, sentences=None, r=1, n_rows=None):
+        '''
+        
+        Note: because of the way the sentence label dictionary is structured, we accept here
+        the entire label dict; meaning this ranges over all documents; but this method operates
+        over one doc at a time. Its index is doc_idx. 
+        '''
+        unique_sent_lbls = list(y_sent_lbls_dict)
+        all_sent_lbl_vectors = [y_sent_lbls_dict[lbl_type][doc_idx].squeeze() for lbl_type in unique_sent_lbls]
+        # sum the binary labels across the sentence label types
+        summed_lbl_dict = np.sum(all_sent_lbl_vectors, axis=0)
+        _, neg_indices = np.where([summed_lbl_dict <= 0]) 
+        _, pos_indices = np.where([summed_lbl_dict > 0])
+        sampled_neg_indices = np.random.choice(neg_indices, r*pos_indices.shape[0], replace=False)
+        train_indices = np.concatenate([pos_indices, sampled_neg_indices])
+
+        if n_rows is not None:
+            # then we will return a matrix comprising n_rows rows, 
+            # repeating positive examples but drawing diverse negative
+            # instances
+            num_rationale_indices = int(n_rows / 2.0)
+            rationale_indices = np.random.choice(pos_indices, num_rationale_indices, replace=True)
+
+            # sample the rest as `negative' (neutral) instances
+            num_non_rationales = n_rows - num_rationale_indices
+            sampled_non_rationale_indices = np.random.choice(neg_indices, num_non_rationales, replace=True)
+            train_indices = np.concatenate([rationale_indices, sampled_non_rationale_indices])
+            
+
+
+        #import pdb; pdb.set_trace()
+        np.random.shuffle(train_indices) # why not
+
+        # now we need to create a label dictionary with these indices
+        y_sent_balanced_dict = {}#dict(zip(unique_sent_lbls, [[]]*len(unique_sent_lbls)))
+        #for idx in train_indices:
+        for sent_lbl_type in unique_sent_lbls:
+            y_sent_balanced_dict[sent_lbl_type] = y_sent_lbls_dict[sent_lbl_type][doc_idx][train_indices]
+
+        if sentences is not None: 
+            return X[train_indices,:], y_sent_balanced_dict, [sentences[idx] for idx in train_indices]
+
+        return X[train_indices,:], y_sent_balanced_dict
+
+
     @staticmethod
     def balanced_sample(X, y, sentences=None, binary=False, k=1, n_rows=None):
         if binary:
@@ -507,6 +554,9 @@ class RationaleCNN:
 
         return False 
 
+
+
+
     @staticmethod
     def _combine_dicts(dictionaries):
         '''
@@ -607,25 +657,44 @@ class RationaleCNN:
         #y_sent_validation = RationaleCNN._combine_dicts(y_sent_dicts_validation)
         #y_sent_validation = np.array(y_sent_validation)
 
-        import pdb; pdb.set_trace()
+        # self.sentence_model.fit(X_doc, y_sent_lbls_dict, epochs=1)
+        #import pdb; pdb.set_trace()
+
+        # need a notion of downsampling. 
         if downsample:
             print("downsampling!")
 
             cur_acc, best_F, best_acc, best_loss = None, -np.inf, -np.inf, np.inf # - inf for F-score
 
-            # then draw nb_epoch balanced samples; take one pass on each
+            ##############################################################
+            # then draw nb_epoch balanced samples; take one pass on each #
+            # here we adopt a 'balanced sampling' approach which entails #
+            # including all positive sentence labels (for all domains    #
+            # and types), and then r * max(y_k) neg examples, where r is #
+            # a hyper-parameter and y_k is a particular label type       #
+            ##############################################################
+
+
             skip_count = 0
             for iter_ in range(nb_epoch):
-
                 print ("on epoch: %s" % iter_)
 
-                X_temp, y_sent_temp, sentences_temp = [], [], []
+                X_temp, y_sentences_temp = [], []
+
+                # y_sent_temp is a dictionary mapping sentence label types to 
+                # constructued samples
+                y_sent_temp = dict(zip(y_sent_lbls_dict.keys(), [[]]*len(y_sent_lbls_dict.keys())))
+
+
+                #for sent_lbl_type, sent_lbl_tensor in y_sent_lbls_dict.items():
                 for i in range(X_doc.shape[0]):
                     # i is indexing the document here!
                     X_doc_i = X_doc[i]
-                    y_sent_i = y_sent[i]
+                    # this is a label matrix *for this label type* (as per
+                    # the outer loop).
+                    #y_sent_i = sent_lbl_tensor[i]
 
-                    # downsample each document
+                    # downsample this document, w.r.t. this domain
                         
                     '''
                     A tricky bit here is that the model expects a given doc length as input,
@@ -634,15 +703,27 @@ class RationaleCNN:
                     for input to the model.
                     '''
                     n_target_rows = X_doc_i.shape[0]
-                    X_doc_i_temp, y_sent_i_temp, sampled_sentences = RationaleCNN.balanced_sample(X_doc_i, y_sent_i, 
-                                                                                sentences=train_sentences[i],
-                                                                                n_rows=n_target_rows)
+                    # this will include: all positive sentences (in any domain), and then a matched sample
+                    # of randomly selected negative ones.
+                    X_doc_i_temp, y_sent_i_lbl_dict_temp, sampled_sentences = RationaleCNN.balanced_sample_MT(X_doc_i,
+                                                                        y_sent_lbls_dict, i, 
+                                                                        sentences=train_sentences[i],
+                                                                        n_rows=n_target_rows)
+
+                    #import pdb; pdb.set_trace()
+                    #RationaleCNN.balanced_sample(X_doc_i, y_sent_i, 
+                    #                                                            sentences=train_sentences[i],
+                    #                                                            n_rows=n_target_rows)
                    
-                    
+                     
                     X_temp.append(X_doc_i_temp)
-                    y_sent_temp.append(y_sent_i_temp)
+                    y_sent_temp = Rationale_CNN._combine_dicts(y_sent_temp, y_sent_i_lbl_dict_temp)
+                    #y_sent_temp.append(y_sent_i_temp)
+
+                   
                     sentences_temp.append(sampled_sentences)
 
+                import pdb; pdb.set_trace()
                 X_temp = np.array(X_temp)
                 y_sent_temp = np.array(y_sent_temp)
                 
