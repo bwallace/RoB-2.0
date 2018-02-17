@@ -679,11 +679,13 @@ class RationaleCNN:
             for iter_ in range(nb_epoch):
                 print ("on epoch: %s" % iter_)
 
-                X_temp, y_sentences_temp = [], []
+                X_temp, sentences_temp = [], []
 
                 # y_sent_temp is a dictionary mapping sentence label types to 
                 # constructued samples
-                y_sent_temp = dict(zip(y_sent_lbls_dict.keys(), [[]]*len(y_sent_lbls_dict.keys())))
+                y_sent_temp = {}
+                for sent_lbl in y_sent_lbls_dict.keys():
+                    y_sent_temp[sent_lbl] = []
 
 
                 #for sent_lbl_type, sent_lbl_tensor in y_sent_lbls_dict.items():
@@ -710,23 +712,36 @@ class RationaleCNN:
                                                                         sentences=train_sentences[i],
                                                                         n_rows=n_target_rows)
 
-                    #import pdb; pdb.set_trace()
+                    
                     #RationaleCNN.balanced_sample(X_doc_i, y_sent_i, 
                     #                                                            sentences=train_sentences[i],
                     #                                                            n_rows=n_target_rows)
                    
                      
                     X_temp.append(X_doc_i_temp)
-                    y_sent_temp = Rationale_CNN._combine_dicts(y_sent_temp, y_sent_i_lbl_dict_temp)
+                    #import pdb; pdb.set_trace()
+                    #if y_sent_temp is None:
+                    #    y_sent_temp = y_sent_i_lbl_dict_temp
+                    #else:
+                        #y_sent_temp = RationaleCNN._combine_dicts([y_sent_temp, y_sent_i_lbl_dict_temp])
+                    for sent_lbl in y_sent_lbls_dict:
+                        y_sent_temp[sent_lbl].append(np.array(y_sent_i_lbl_dict_temp[sent_lbl]))
+            
+                    
+                    #import pdb; pdb.set_trace()
                     #y_sent_temp.append(y_sent_i_temp)
 
                    
                     sentences_temp.append(sampled_sentences)
 
-                import pdb; pdb.set_trace()
-                X_temp = np.array(X_temp)
-                y_sent_temp = np.array(y_sent_temp)
                 
+                X_temp = np.array(X_temp)
+                for sent_lbl in y_sent_lbls_dict:
+                    y_sent_temp[sent_lbl] = np.array(y_sent_temp[sent_lbl])
+                #y_sent_temp = np.array(y_sent_temp)
+                
+                import pdb; pdb.set_trace()
+
                 self.sentence_model.fit(X_temp, y_sent_temp, epochs=1)
 
                 cur_val_results = self.sentence_model.evaluate(X_doc_validation, y_sent_validation)
