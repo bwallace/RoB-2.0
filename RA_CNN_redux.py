@@ -543,7 +543,7 @@ class RationaleCNN:
 
 
     @staticmethod
-    def _combine_dicts(dictionaries, convert_to_np_arrs=False):
+    def _combine_dicts(dictionaries, convert_to_np_arrs=False, expand_dims=True, squeeze_dims=False):
         '''
         Merge all dictionaries in list ds into a 
         single dictionary. Assumes these have the same
@@ -562,10 +562,15 @@ class RationaleCNN:
             if convert_to_np_arrs:
                 field_vals = np.array(field_vals)
           
-                # here we add an extra dim so that the the dimensionality
-                # of this thing will be (num_examples x 1) rather than
-                # just (num_examples,).
-                field_vals = np.expand_dims(field_vals, axis=-1)
+                #if squeeze_dims:
+                #    import pdb; pdb.set_trace()
+                #    field_vals = field_vals.squeeze()
+
+                if expand_dims:
+                    # here we add an extra dim so that the the dimensionality
+                    # of this thing will be (num_examples x 1) rather than
+                    # just (num_examples,).
+                    field_vals = np.expand_dims(field_vals, axis=-1)
 
             combined_dict[key] = field_vals
 
@@ -587,7 +592,8 @@ class RationaleCNN:
             pos_index_tuples = np.where(cur_y_tensor > 0)
             n_pos = pos_index_tuples[0].shape[0]
             if n_pos == 0: 
-                # basically ignore then.
+                # if no positive instances (sentences) exist for this label, 
+                # ignore loss here w.r.t. to this output for this instance.
                 cur_y_weights = np.zeros(cur_y_tensor.shape[:-1])
             else:
                 n_neg = (cur_y_tensor.shape[0] * cur_y_tensor.shape[1]) - n_pos
@@ -616,7 +622,7 @@ class RationaleCNN:
         print("using sentences from %s docs for sentence prediction validation!" % 
                     validation_size)
     
-        # build the train and validation sets
+        # build the train and (nested!) validation sets
         X_doc, y_sent, train_sentences = [], [], []
 
         y_sent_lbls_dict = {}
@@ -644,11 +650,17 @@ class RationaleCNN:
         X_doc_validation, y_sent_dicts_validation, validation_sentences = [], [], []
         for d in train_documents[-validation_size:]:
             cur_X, cur_sent_y_dict = d.get_padded_sequences(self.preprocessor)
+            # we only keep validation documents that contain at least one rationale /
+            # sentence label 
+            # @TODO this results in dropping a *lot* of docs -- needs sanity check
+            #       (or perhaps we are doing the matching poorly.)
             if RationaleCNN._doc_contains_at_least_one_rationale(cur_sent_y_dict):
                 X_doc_validation.append(cur_X)
                 y_sent_dicts_validation.append(RationaleCNN._combine_dicts(cur_sent_y_dict))
                 validation_sentences.append(d.padded_sentences)
 
+        print ("using {0} docs for validation that have *any* rationale labels (out of {1} total available validation docs)".format(
+                        len(X_doc_validation), validation_size))
         X_doc_validation = np.array(X_doc_validation)
         y_sent_validation = RationaleCNN._combine_dicts(y_sent_dicts_validation, 
                                                             convert_to_np_arrs=True)
@@ -668,8 +680,8 @@ class RationaleCNN:
 
             X_temp, sentences_temp = [], []
 
-            # y_sent_temp is a dictionary mapping sentence label types to 
-            # constructued samples
+            # y_sent_temp maps sentence label types to 
+            # constructed samples
             y_sent_temp = {}
             for sent_lbl in y_sent_lbls_dict.keys():
                 y_sent_temp[sent_lbl] = []
@@ -728,7 +740,6 @@ class RationaleCNN:
 
 
         
-        import pdb; pdb.set_trace()
 
         # reload best sentence-model weights weights
         self.sentence_model.load_weights(sentence_model_weights_path)
@@ -759,31 +770,35 @@ class RationaleCNN:
         ###
         # build the train set
         ###
-        X_doc, y_doc = [], []
+        X_doc, y_doc_dicts = [], []
         y_sent = []
         for d in train_documents[:-validation_size]:
             cur_X, cur_sent_y = d.get_padded_sequences(self.preprocessor)
             X_doc.append(cur_X)
-            y_doc.append(d.doc_y)
+            y_doc_dicts.append(d.doc_y_dict)
             y_sent.append(cur_sent_y)
         X_doc = np.array(X_doc)
-        y_doc = np.array(y_doc)
+        y_doc = RationaleCNN._combine_dicts(y_doc_dicts, convert_to_np_arrs=True, 
+                                                         expand_dims=False)
 
         ####
         # @TODO refactor (rather redundant with above...)
         # and the validation set. 
         ####
-        X_doc_validation, y_doc_validation = [], []
+        X_doc_validation, y_doc_validation_dicts = [], []
         y_sent_validation = []
         for d in train_documents[-validation_size:]:
             cur_X, cur_sent_y = d.get_padded_sequences(self.preprocessor)
             X_doc_validation.append(cur_X)
-            y_doc_validation.append(d.doc_y)
+            y_doc_validation_dicts.append(d.doc_y_dict)
             y_sent_validation.append(cur_sent_y)
         X_doc_validation = np.array(X_doc_validation)
-        y_doc_validation = np.array(y_doc_validation)
+        y_doc_validation = RationaleCNN._combine_dicts(y_doc_validation_dicts, 
+                                                        convert_to_np_arrs=True, 
+                                                        expand_dims=False)
 
 
+        #import pdb; pdb.set_trace()
         if downsample:
             print("downsampling!")
 
