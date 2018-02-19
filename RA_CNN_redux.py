@@ -38,6 +38,14 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.constraints import maxnorm
 from keras.regularizers import l2
 
+OUTCOME_TYPES = ["all", "mortality", "objective", "subjective"]
+DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
+                    ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
+                    ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
+            
+SENT_OUTCOMES = ["ac-rationale", "rsg-rationale"]  + \
+                    ["boa-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
+                    ["bpp-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
 class RationaleCNN:
 
     def __init__(self, preprocessor, filters=None, n_filters=32, 
@@ -136,6 +144,50 @@ class RationaleCNN:
         shape = list(input_shape)
         return tuple((1, shape[-1]))
 
+
+    @staticmethod
+    def balanced_sample_MT(X, y_sent_lbls_dict, doc_idx, sentences=None, r=1, n_rows=None):
+        '''
+        
+        Note: because of the way the sentence label dictionary is structured, we accept here
+        the entire label dict; meaning this ranges over all documents; but this method operates
+        over one doc at a time. Its index is doc_idx. 
+        '''
+        unique_sent_lbls = list(y_sent_lbls_dict)
+        all_sent_lbl_vectors = [y_sent_lbls_dict[lbl_type][doc_idx].squeeze() for lbl_type in unique_sent_lbls]
+        # sum the binary labels across the sentence label types
+        summed_lbl_dict = np.sum(all_sent_lbl_vectors, axis=0)
+        _, neg_indices = np.where([summed_lbl_dict <= 0]) 
+        _, pos_indices = np.where([summed_lbl_dict > 0])
+        sampled_neg_indices = np.random.choice(neg_indices, r*pos_indices.shape[0], replace=False)
+        train_indices = np.concatenate([pos_indices, sampled_neg_indices])
+
+        if n_rows is not None:
+            # then we will return a matrix comprising n_rows rows, 
+            # repeating positive examples but drawing diverse negative
+            # instances
+            num_rationale_indices = int(n_rows / 2.0)
+            rationale_indices = np.random.choice(pos_indices, num_rationale_indices, replace=True)
+
+            # sample the rest as `negative' (neutral) instances
+            num_non_rationales = n_rows - num_rationale_indices
+            sampled_non_rationale_indices = np.random.choice(neg_indices, num_non_rationales, replace=True)
+            train_indices = np.concatenate([rationale_indices, sampled_non_rationale_indices])
+
+        np.random.shuffle(train_indices) # why not
+
+        # now we need to create a label dictionary with these indices
+        y_sent_balanced_dict = {}#dict(zip(unique_sent_lbls, [[]]*len(unique_sent_lbls)))
+        
+        for sent_lbl_type in unique_sent_lbls:
+            y_sent_balanced_dict[sent_lbl_type] = y_sent_lbls_dict[sent_lbl_type][doc_idx][train_indices]
+
+        if sentences is not None: 
+            return X[train_indices,:], y_sent_balanced_dict, [sentences[idx] for idx in train_indices]
+
+        return X[train_indices,:], y_sent_balanced_dict
+
+
     @staticmethod
     def balanced_sample(X, y, sentences=None, binary=False, k=1, n_rows=None):
         if binary:
@@ -225,7 +277,6 @@ class RationaleCNN:
             
             convolutions.append(r)
 
-        #sent_vectors = merge(convolutions, name="sentence_vectors", mode="concat")
         sent_vectors = concatenate(convolutions, name="sentence_vectors")
         sent_vectors = Dropout(self.sent_dropout, name="dropout")(sent_vectors)
 
@@ -315,19 +366,72 @@ class RationaleCNN:
         sent_vectors = merge(convolutions, name="sentence_vectors", mode="concat")
  
         ####
-        # Here is where we need to modify things; I think we'll have one sentence 
-        # pred layer per domain
+        # one (intermediate) output layer per rationale-type
+        # @TODO share more within domains? 
+        sentence_outputs, sentence_losses = [], []
+        self.sentence_layer_names = [] # keep around for later access
+        for sent_output_name in SENT_OUTCOMES:
+            sent_output_layer = Dense(1, activation="sigmoid", name=sent_output_name)
+            # was pre-fixing w/ "sentence_predictions-"
+            cur_sent_layer_name = "{0}".format(sent_output_name)
+            self.sentence_layer_names.append(cur_sent_layer_name)
+            sent_output_preds = TimeDistributed(sent_output_layer, name=cur_sent_layer_name)(sent_vectors)
+            sentence_outputs.append(sent_output_preds)
+            sentence_losses.append("binary_crossentropy")
         
-        sent_pred_model = Dense(3, activation="softmax", name="sentence_prediction", kernel_regularizer=l2(0.01))
-        sent_preds = TimeDistributed(sent_pred_model, name="sentence_predictions")(sent_vectors)
-        self.sentence_model = Model(inputs=tokens_input, outputs=sent_preds)
-        self.sentence_model.compile(loss='categorical_crossentropy', 
-                                    metrics=["accuracy"], 
-                                    optimizer="adagrad")
+        outcomes_to_sent_models = dict(zip(SENT_OUTCOMES, sentence_outputs))
+        self.sentence_model = Model(inputs=tokens_input, outputs=sentence_outputs)
+        self.sentence_model.compile(optimizer="adagrad", loss=sentence_losses, sample_weight_mode="temporal") # "adagrad"
         print (self.sentence_model.summary())
-        
 
-        
+
+        # these are two helpers for scaling sentence vectors by rationale weights
+        def scale_merge(inputs):
+            sent_vectors, sent_weights = inputs[0], inputs[1]
+            return K.batch_dot(sent_vectors, sent_weights)
+
+        def scale_merge_output_shape(input_shape):
+            # this is expected now to be (None x sentence_vec_length x doc_length)
+            # or, e.g., (None, 96, 200)
+            input_shape_ls = list(input_shape)[0]
+            # should be (batch x sentence embedding), e.g., (None, 96)
+            return (input_shape_ls[0], input_shape_ls[1])
+
+
+        # sent vectors will be, e.g., (None, 200, 96)
+        # -> reshuffle for dot product below in merge -> (None, 96, 200)
+        sent_vectors = Permute((2, 1), name="permuted_sent_vectors")(sent_vectors)
+
+        #####
+        # Now, we build a doc-level output for each outcome type
+        doc_outputs, doc_losses = [], []
+        for (sent_output_str, doc_output_str) in zip(SENT_OUTCOMES, DOC_OUTCOMES):
+            ## need to access layer named "sentence_predictions-{0}".format(sent_output_name)
+            sent_weights_for_outcome = outcomes_to_sent_models[sent_output_str]
+
+            # each outcome type will now get its own doc_vector, as per its weights
+            doc_vector_for_outcome = merge([sent_vectors, sent_weights_for_outcome], 
+                                        name="doc_vector_{0}".format(doc_output_str),
+                                        mode=scale_merge,
+                                        output_shape=scale_merge_output_shape)
+
+            # trim extra dim
+            doc_vector_for_outcome = Reshape((total_sentence_dims,), name="reshaped_doc_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            doc_vector_for_outcome = Dropout(self.doc_dropout, name="doc_v_dropout_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            # output space is: [low, high/unclear, missing]
+            doc_output_for_outcome = Dense(3, activation="softmax", name="doc_prediction_{0}".format(doc_output_str))(doc_vector_for_outcome)
+            doc_outputs.append(doc_output_for_outcome)
+            doc_losses.append("categorical_crossentropy")
+
+        self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
+        self.doc_model.compile(loss=doc_losses, optimizer="adam")
+        print(self.doc_model.summary())
+
+
+        self.set_final_sentence_model()
+
+       
+        '''
         #### 
         # this whole block needs to be updated to have per-outcome weights
         # i think: (1) modify to 0/1 (sigmoid); (2) have one per outcome type
@@ -362,9 +466,11 @@ class RationaleCNN:
         doc_vector = Dropout(self.doc_dropout, name="doc_v_dropout")(doc_vector)
 
         doc_output = Dense(1, activation="sigmoid", name="doc_prediction")(doc_vector)
-        
+        '''
         
         # ok so i think just need to attach multiple outputs
+
+        '''
         self.doc_model = Model(inputs=tokens_input, outputs=doc_output)
         self.doc_model.compile(metrics=["accuracy", 
                                         RationaleCNN.metric_func_maker(metric_name="f"), 
@@ -373,18 +479,21 @@ class RationaleCNN:
                                 loss="binary_crossentropy", optimizer="adam")
 
         self.set_final_sentence_model()
-
-        print("rationale CNN model: ")
-        print(self.doc_model.summary())
+        
+        '''
+        
+        
 
 
     def set_final_sentence_model(self):
         '''
         allow convenient access to sentence-level predictions, after training
         '''
-        sent_prob_outputs = self.doc_model.get_layer("sentence_predictions")
+        #sent_prob_outputs = self.doc_model.get_layer("sentence_predictions")
+        sent_prob_outputs = []
+
         sent_model = K.function(inputs=self.doc_model.inputs + [K.learning_phase()], 
-                        outputs=[sent_prob_outputs.output])
+                        outputs=[self.doc_model.get_layer(sent_layer_name).output for sent_layer_name in self.sentence_layer_names])
         self.sentence_prob_model = sent_model
 
 
@@ -421,6 +530,75 @@ class RationaleCNN:
 
         return (doc_pred, rationales)
 
+    @staticmethod
+    def _doc_contains_at_least_one_rationale(sentence_lbl_dicts):
+
+        for y_d in sentence_lbl_dicts:
+            if any([y_d_j > 0 for y_d_j in y_d.values()]):
+                return True
+
+        return False 
+
+
+
+
+    @staticmethod
+    def _combine_dicts(dictionaries, convert_to_np_arrs=False):
+        '''
+        Merge all dictionaries in list ds into a 
+        single dictionary. Assumes these have the same
+        set of keys!
+        '''
+        combined_dict = {}
+        keys = dictionaries[0].keys()
+        
+        for key in keys:
+            field_vals = []
+            for dict in dictionaries: 
+                if key not in dict:
+                    print ("Ah! {0} not in {1}".format(key, dict))
+                field_vals.append(dict[key])
+
+            if convert_to_np_arrs:
+                field_vals = np.array(field_vals)
+          
+                # here we add an extra dim so that the the dimensionality
+                # of this thing will be (num_examples x 1) rather than
+                # just (num_examples,).
+                field_vals = np.expand_dims(field_vals, axis=-1)
+
+            combined_dict[key] = field_vals
+
+        return combined_dict
+
+
+    @staticmethod
+    def _get_val_weights(y_lbl_dict):
+        '''
+        This assembles a dictionary mapping label types to sample weights, 
+        which are set to reflect an equal balance between minority and
+        majority instances. In the case where an instances (first dim)
+        contains no positive instances, all weights are set to 0, effectively
+        ignoring said output for example, at least in the validation set. 
+        '''
+        y_val_weights = {}
+        for lbl_name in y_lbl_dict:
+            cur_y_tensor = y_lbl_dict[lbl_name]
+            pos_index_tuples = np.where(cur_y_tensor > 0)
+            n_pos = pos_index_tuples[0].shape[0]
+            if n_pos == 0: 
+                # basically ignore then.
+                cur_y_weights = np.zeros(cur_y_tensor.shape[:-1])
+            else:
+                n_neg = (cur_y_tensor.shape[0] * cur_y_tensor.shape[1]) - n_pos
+                pos_weight = n_neg / n_pos 
+                cur_y_weights = np.ones(cur_y_tensor.shape[:-1])
+
+                for i,j,k in zip(*pos_index_tuples):
+                    # note: k will always be 1; we squeeze it here.
+                    cur_y_weights[i,j] = pos_weight
+            y_val_weights[lbl_name] = cur_y_weights
+        return y_val_weights
 
     def train_sentence_model(self, train_documents, nb_epoch=5, 
                                 downsample=True, 
@@ -438,112 +616,124 @@ class RationaleCNN:
         print("using sentences from %s docs for sentence prediction validation!" % 
                     validation_size)
     
-        #######
         # build the train and validation sets
-        # @TODO redundant blocks...
-        ######
         X_doc, y_sent, train_sentences = [], [], []
+
+        y_sent_lbls_dict = {}
+        for s_layer_name in self.sentence_layer_names:
+            y_sent_lbls_dict[s_layer_name] = []
+
         for d in train_documents[:-validation_size]:
-            cur_X, cur_sent_y = d.get_padded_sequences(self.preprocessor)
-            if np.max(cur_sent_y[:,:2]) > 0:            
+            cur_X, cur_sent_y_dict = d.get_padded_sequences(self.preprocessor)
+            if RationaleCNN._doc_contains_at_least_one_rationale(cur_sent_y_dict):
                 X_doc.append(cur_X)
-                y_sent.append(cur_sent_y)
+                combined_dict = RationaleCNN._combine_dicts(cur_sent_y_dict)
+
+                for t in combined_dict:
+                    y_sent_lbls_dict[t].append(np.array(combined_dict[t]))
+
                 train_sentences.append(d.padded_sentences)
+              
 
         X_doc = np.array(X_doc)
-        y_sent = np.array(y_sent)
-
-
-        X_doc_validation, y_sent_validation, validation_sentences = [], [], []
+        n_docs, num_sents, sent_len = X_doc.shape
+        for outcome_key in y_sent_lbls_dict.keys():
+            arr_lbls = np.array(y_sent_lbls_dict[outcome_key])
+            y_sent_lbls_dict[outcome_key] = arr_lbls.reshape(n_docs, num_sents, 1)
+ 
+        X_doc_validation, y_sent_dicts_validation, validation_sentences = [], [], []
         for d in train_documents[-validation_size:]:
-            cur_X, cur_sent_y = d.get_padded_sequences(self.preprocessor)
-            if np.max(cur_sent_y[:,:2]) > 0:
-                # 12/13: only validate on samples that actually have at 
-                # least one rationale!
+            cur_X, cur_sent_y_dict = d.get_padded_sequences(self.preprocessor)
+            if RationaleCNN._doc_contains_at_least_one_rationale(cur_sent_y_dict):
                 X_doc_validation.append(cur_X)
-                y_sent_validation.append(cur_sent_y)
+                y_sent_dicts_validation.append(RationaleCNN._combine_dicts(cur_sent_y_dict))
                 validation_sentences.append(d.padded_sentences)
+
         X_doc_validation = np.array(X_doc_validation)
-        y_sent_validation = np.array(y_sent_validation)
+        y_sent_validation = RationaleCNN._combine_dicts(y_sent_dicts_validation, 
+                                                            convert_to_np_arrs=True)
+        y_sent_validation_weights = RationaleCNN._get_val_weights(y_sent_validation)
 
+        ##############################################################
+        # we draw nb_epoch balanced samples; take one pass on each   #
+        # here we adopt a 'balanced sampling' approach which entails #
+        # including all positive sentence labels (for all domains    #
+        # and types), and then r * max(y_k) neg examples, where r is #
+        # a hyper-parameter and y_k is a particular label type       #
+        ##############################################################
 
+        best_loss = np.inf 
+        for iter_ in range(nb_epoch):
+            print ("on epoch: %s" % iter_)
 
-        if downsample:
-            print("downsampling!")
+            X_temp, sentences_temp = [], []
 
-            cur_acc, best_F, best_acc, best_loss = None, -np.inf, -np.inf, np.inf # - inf for F-score
+            # y_sent_temp is a dictionary mapping sentence label types to 
+            # constructued samples
+            y_sent_temp = {}
+            for sent_lbl in y_sent_lbls_dict.keys():
+                y_sent_temp[sent_lbl] = []
 
-            # then draw nb_epoch balanced samples; take one pass on each
-            skip_count = 0
-            for iter_ in range(nb_epoch):
+            for i in range(X_doc.shape[0]):
+                # i is indexing the document here!
+                X_doc_i = X_doc[i]
 
-                print ("on epoch: %s" % iter_)
+                '''
+                A tricky bit here is that the model expects a given doc length as input,
+                so here we take a kind of hacky approach of duplicating the downsampled
+                rows per documents. Basically this assembles 'balanced' pseudo documents
+                for input to the model.
+                '''
+                n_target_rows = X_doc_i.shape[0]
+                # this will include: all positive sentences (in any domain), and then a matched sample
+                # of randomly selected negative ones.
+                X_doc_i_temp, y_sent_i_lbl_dict_temp, sampled_sentences = RationaleCNN.balanced_sample_MT(X_doc_i,
+                                                                    y_sent_lbls_dict, i, 
+                                                                    sentences=train_sentences[i],
+                                                                    n_rows=n_target_rows)
 
-                X_temp, y_sent_temp, sentences_temp = [], [], []
-                for i in range(X_doc.shape[0]):
-                    # i is indexing the document here!
-                    X_doc_i = X_doc[i]
-                    y_sent_i = y_sent[i]
+                X_temp.append(X_doc_i_temp)
 
-                    # downsample each document
-                        
-                    '''
-                    A tricky bit here is that the model expects a given doc length as input,
-                    so here we take a kind of hacky approach of duplicating the downsampled
-                    rows per documents. Basically this assembles 'balanced' pseudo documents
-                    for input to the model.
-                    '''
-                    n_target_rows = X_doc_i.shape[0]
-                    X_doc_i_temp, y_sent_i_temp, sampled_sentences = RationaleCNN.balanced_sample(X_doc_i, y_sent_i, 
-                                                                                sentences=train_sentences[i],
-                                                                                n_rows=n_target_rows)
-                   
-                    
-                    X_temp.append(X_doc_i_temp)
-                    y_sent_temp.append(y_sent_i_temp)
-                    sentences_temp.append(sampled_sentences)
+                for sent_lbl in y_sent_lbls_dict:
+                    y_sent_temp[sent_lbl].append(np.array(y_sent_i_lbl_dict_temp[sent_lbl]))
+        
+       
+                sentences_temp.append(sampled_sentences)
 
-                X_temp = np.array(X_temp)
-                y_sent_temp = np.array(y_sent_temp)
-                
-                self.sentence_model.fit(X_temp, y_sent_temp, epochs=1)
+            
+            X_temp = np.array(X_temp)
+            for sent_lbl in y_sent_lbls_dict:
+                y_sent_temp[sent_lbl] = np.array(y_sent_temp[sent_lbl])
+             
 
-                cur_val_results = self.sentence_model.evaluate(X_doc_validation, y_sent_validation)
-                #import pdb; pdb.set_trace()
-                out_str = ["%s: %s" % (metric, val) for metric, val in zip(self.sentence_model.metrics_names, cur_val_results)]
-                print ("\n".join(out_str))
+            self.sentence_model.fit(X_temp, y_sent_temp, epochs=1)
 
-                
+            
+            cur_val_results = self.sentence_model.evaluate(X_doc_validation, y_sent_validation, sample_weight=y_sent_validation_weights)
+            out_str = ["%s: %s" % (metric, val) for metric, val in zip(self.sentence_model.metrics_names, cur_val_results)]
+            print ("\n".join(out_str))
+            
+            # ignore nans; I believe this means we just didn't see any such labels
+            # we also skip first entry as this is just a sum of the various losses
+            non_nan_val_results = [loss_j for loss_j in cur_val_results[1:] if not np.isnan(loss_j)]
+            if len(non_nan_val_results) == 0:
+                print("\n\noh dear -- all sentence losses were NaN???!")
 
-                loss, cur_acc = cur_val_results                
-                if loss < best_loss:
-                    best_acc = cur_acc
-                    best_loss = loss 
-                    self.sentence_model.save_weights(sentence_model_weights_path, overwrite=True)
-                    print("new best sentence accuracy: %s\n" % best_acc)
-                    print("new best sentence loss: %s\n" % best_loss)
-
-                #import pdb; pdb.set_trace()
-        else:
-            # using accuracy here because balanced(-ish) data is assumed.
-            checkpointer = ModelCheckpoint(filepath=sentence_model_weights_path, 
-                                    verbose=1,
-                                    monitor="val_loss",
-                                    save_best_only=True,
-                                    mode="min")
-
-            hist = self.sentence_model.fit(X_doc, y_sent, 
-                        epochs=nb_epoch, 
-                        validation_data=(X_doc_validation, y_sent_validation),
-                        callbacks=[checkpointer])
+            total_loss = sum(non_nan_val_results) / len(non_nan_val_results)           
+            print ("mean loss: {0}; current best loss: {1}".format(total_loss, best_loss))
+            if total_loss < best_loss:
+                best_loss = total_loss 
+                self.sentence_model.save_weights(sentence_model_weights_path, overwrite=True)
+                print("new best sentence loss: %s\n" % best_loss)
 
 
         
+        import pdb; pdb.set_trace()
 
-        # reload best weights
+        # reload best sentence-model weights weights
         self.sentence_model.load_weights(sentence_model_weights_path)
         
-        # 12/13/16 -- check if leaving sentence model trainable
+        '''
         if not self.end_to_end_train:
             print ("freezing sentence prediction layer weights!")
             sent_softmax_layer = self.doc_model.get_layer("sentence_predictions")
@@ -556,6 +746,7 @@ class RationaleCNN:
                                         RationaleCNN.metric_func_maker(metric_name="recall"), 
                                         RationaleCNN.metric_func_maker(metric_name="precision")], 
                                         loss="binary_crossentropy", optimizer="adadelta")
+        '''
 
     def train_document_model(self, train_documents, nb_epoch=5, downsample=False, 
                                 doc_val_split=.2, batch_size=50,
@@ -641,18 +832,24 @@ class RationaleCNN:
 
 class Document:
     def __init__(self, doc_id, sentences, doc_lbl_dict=None, 
-                    sentences_lbl_dicts=None, min_sent_len=3):
+                    sentence_lbl_dicts=None, min_sent_len=3):
         self.doc_id = doc_id
         self.doc_y_dict = doc_lbl_dict
 
-        self.sentences, self.sentences_y_vects = [], []
+        ###
+        # each sentence is associated with multiple (named) 
+        # outputs; these are binary indicators that encode whether
+        # said sentence constitutes a rationale for the respective
+        # domain RoB judgments.
+        ###
+        self.sentences, self.sentence_y_dicts = [], []
         for idx, s in enumerate(sentences):
             if len(s.split(" ")) >= min_sent_len:
                 self.sentences.append(s)
-                if not sentences_lbl_dicts is None:
+                if not sentence_lbl_dicts is None:
                     #sent_y_vec = sent_lbl_dict_to_vec(sentences_labels[idx])
                     #self.sentences_y_vects.append(sentences_labels[idx])
-                    pass 
+                    self.sentence_y_dicts.append(sentence_lbl_dicts[idx])
 
         self.sentence_sequences = None
         # length, pre-padding!
@@ -680,20 +877,27 @@ class Document:
         self.padded_sentences = self.sentences + [''] * (p.max_doc_len - self.n)
 
 
-    def get_padded_sequences_for_X_y(self, p, X, y):
+    def get_padded_sequences_for_X_y(self, p, X, y_dicts):
         n_sentences = X.shape[0]
+        y = None
         if n_sentences > p.max_doc_len:
             X = X[:p.max_doc_len]
-            y = y[:p.max_doc_len]
-        elif n_sentences < p.max_doc_len:
-            #dummy_rows = p.max_features * np.ones((p.max_doc_len-n_sentences, p.max_sent_len), dtype='int32') 
+            y = y_dicts[:p.max_doc_len]
+        elif n_sentences <= p.max_doc_len:
             dummy_rows = 0 * np.ones((p.max_doc_len-n_sentences, p.max_sent_len), dtype='int32')
             X = np.vstack((X, dummy_rows))
         
-            dummy_lbls = [np.array([0,0,1]) for _ in range(p.max_doc_len-n_sentences)]
-            y = np.vstack((y, dummy_lbls))
+            # for padded rows (which represent sentences), create all-zero label dictionaries
+            dummy_sent_lbl_dict = {}
+            for sent_output_name in SENT_OUTCOMES:
+                cur_sent_layer_name = "{0}".format(sent_output_name)
+                dummy_sent_lbl_dict[cur_sent_layer_name] = 0.0 
 
-        return np.array(X), np.array(y)
+            dummy_lbls = [dummy_sent_lbl_dict]*(p.max_doc_len-n_sentences)
+            y = y_dicts + dummy_lbls
+            
+
+        return np.array(X), y
 
     def get_padded_sequences_for_X(self, p, X):
         n_sentences = X.shape[0]
@@ -712,9 +916,9 @@ class Document:
         #n_sentences = self.sentence_sequences.shape[0]
         X = self.sentence_sequences
 
-        if labels_too:
-            y = self.sentences_y
-            return self.get_padded_sequences_for_X_y(p, X, y)
+        if labels_too:    
+            y_dicts = self.sentence_y_dicts
+            return self.get_padded_sequences_for_X_y(p, X, y_dicts)
 
         # otherwise only return X
         return self.get_padded_sequences_for_X(p, X)

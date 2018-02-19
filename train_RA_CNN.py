@@ -22,8 +22,8 @@ from gensim.models import Word2Vec
 from keras.callbacks import ModelCheckpoint
 
 
-import rationale_CNN
-from rationale_CNN import Document
+import RA_CNN_redux
+from RA_CNN_redux import Document
 
 
 def load_trained_w2v_model(path="/work/03213/bwallace/maverick/RoB_CNNs/PubMed-w2v.bin"):
@@ -31,45 +31,49 @@ def load_trained_w2v_model(path="/work/03213/bwallace/maverick/RoB_CNNs/PubMed-w
     #m = Word2Vec.load_word2vec_format(path, binary=True)
     return m
 
-def read_data(path_to_csv="data/rob-data-2.csv"):
+def read_data(path_to_csv="data/small-data.csv"):
     ''' 
-    Assumes data is in CSV with following format:
-
-        doc_id,doc_lbl,sentence_number,sentence,sentence_lbl
-
-    Note that we assume sentence_lbl \in {-1, 1}
+    
     '''
     tp = pd.read_csv(path_to_csv, chunksize=10000)
     df = pd.concat(tp, ignore_index=True)
 
+    doc_judgments = RA_CNN_redux.DOC_OUTCOMES
+    sent_judgments = RA_CNN_redux.SENT_OUTCOMES
+    # only overall for ac/rsg
+    '''
+    doc_judgments = ["ac-doc-judgment", "rsg-doc-judgment"] + \
+                    ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES] + \
+                    ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES]
+            
+
+    sent_judgments = ["ac-rationale", "rsg-rationale"]  + \
+                    ["boa-rationale-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES] + \
+                    ["bpp-rationale-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES]
+    '''
+    # recall that the assumption now is doc_id is *either* PMID or DOI,
+    # we will use the former where available and default to the latter
+    # otherwise.
     docs = df.groupby("doc_id")
     documents = []
     for doc_id, doc in docs:
         # only need the first because document-level labels are repeated
-        doc_label = (doc["doc_lbl"].values[0]+1)/2 # convert to 0/1
+        #doc_label = (doc["doc_lbl"].values[0]+1)/2 # convert to 0/1
+        doc_lbl_dict = {}
+        for dj in doc_judgments:
+            doc_lbl_dict[dj] = doc[dj]
 
         sentences = doc["sentence"].values
-        sentence_labels = (doc["sentence_lbl"].values+1)/2
+        sentence_label_dicts = []
         
-        # convert to binary output vectors, so that e.g., [1, 0, 0]
-        # indicates a positive rationale; [0, 1, 0] a negative rationale
-        # and [0, 0, 1] a non-rationale
-        def _to_vec(sent_y): 
-            sent_lbl_vec = np.zeros(3)
-            if sent_y == 0:
-                sent_lbl_vec[-1] = 1.0
-            else: 
-                # then it's a rationale
-                if doc_label > 0: 
-                    # positive rationale
-                    sent_lbl_vec[0] = 1.0
-                else: 
-                    # negative rationale
-                    sent_lbl_vec[1] = 1.0
-            return sent_lbl_vec
+        for idx, row in doc.iterrows():
+            cur_sent_lbl_dict = {}
+            for sj in sent_judgments:
+                cur_sent_lbl_dict[sj] = row[sj]
+            sentence_label_dicts.append(cur_sent_lbl_dict)
 
-        sentence_label_vectors = [_to_vec(sent_y) for sent_y in sentence_labels]
-        cur_doc = Document(doc_id, sentences, doc_label, sentence_label_vectors)
+        cur_doc = Document(doc_id, sentences,  doc_lbl_dict=doc_lbl_dict, 
+                            sentence_lbl_dicts=sentence_label_dicts)
         documents.append(cur_doc)
 
     return documents
@@ -138,7 +142,7 @@ def line_search_train(data_path, wvs_path, documents=None, test_mode=False,
 
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
                                 model_name="rationale-CNN", 
-                                nb_epoch_sentences=20, nb_epoch_doc=25, val_split=.1,
+                                nb_epoch_sentences=20, nb_epoch_doc=25, val_split=.2,
                                 sentence_dropout=0.5, document_dropout=0.5, run_name="RSG",
                                 shuffle_data=False, max_features=20000, 
                                 max_sent_len=25, max_doc_len=200,
@@ -149,8 +153,9 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
                                 stopword=True,
                                 pos_class_weight=1):
     
+    
     if documents is None:
-        documents = read_data(path=data_path)
+        documents = read_data(path_to_csv=data_path)
         if shuffle_data: 
             random.shuffle(documents)
 
@@ -160,7 +165,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     for d in documents: 
         all_sentences.extend(d.sentences)
 
-    p = rationale_CNN.Preprocessor(max_features=max_features, 
+    p = RA_CNN_redux.Preprocessor(max_features=max_features, 
                                     max_sent_len=max_sent_len, 
                                     max_doc_len=max_doc_len, 
                                     wvs=wvs, stopword=stopword)
@@ -170,7 +175,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     for d in documents: 
         d.generate_sequences(p)
 
-    r_CNN = rationale_CNN.RationaleCNN(p, filters=[1,2,3], 
+    r_CNN = RA_CNN_redux.RationaleCNN(p, filters=[1,2,3], 
                                         n_filters=n_filters, 
                                         sent_dropout=sentence_dropout, 
                                         doc_dropout=document_dropout,
