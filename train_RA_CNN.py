@@ -40,17 +40,6 @@ def read_data(path_to_csv="data/small-data.csv"):
 
     doc_judgments = RA_CNN_redux.DOC_OUTCOMES
     sent_judgments = RA_CNN_redux.SENT_OUTCOMES
-    # only overall for ac/rsg
-    '''
-    doc_judgments = ["ac-doc-judgment", "rsg-doc-judgment"] + \
-                    ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES] + \
-                    ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES]
-            
-
-    sent_judgments = ["ac-rationale", "rsg-rationale"]  + \
-                    ["boa-rationale-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES] + \
-                    ["bpp-rationale-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES]
-    '''
 
     doc_lbl_map = {"low":np.array([1,0,0]),
                     "high":np.array([0,1,0]),
@@ -156,7 +145,7 @@ def line_search_train(data_path, wvs_path, documents=None, test_mode=False,
 
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
                                 model_name="rationale-CNN", 
-                                nb_epoch_sentences=1, nb_epoch_doc=25, val_split=.5,
+                                nb_epoch_sentences=10, nb_epoch_doc=25, val_split=.1,
                                 sentence_dropout=0.5, document_dropout=0.5, run_name="RSG",
                                 shuffle_data=True, max_features=20000, 
                                 max_sent_len=25, max_doc_len=200,
