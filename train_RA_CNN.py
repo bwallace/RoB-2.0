@@ -169,8 +169,8 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     
     
     if documents is None:
-        #documents = read_data(path_to_csv=data_path)
-        documents = read_data()
+        documents = read_data(path_to_csv=data_path)
+        #documents = read_data()
         if shuffle_data: 
             random.shuffle(documents)
 
