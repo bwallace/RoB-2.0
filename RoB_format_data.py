@@ -7,7 +7,7 @@ nlp = spacy.load('en')
 import fuzzywuzzy
 from fuzzywuzzy import fuzz
 
-data_path = "/Users/byron/Dropbox/cochranetech/rob2/RoB_data.csv"
+data_path = "data/RoB-data-w-uids.csv"
 tp = pd.read_csv(data_path, chunksize=10000)
 df = pd.concat(tp, ignore_index=True)
 df = df.dropna(subset=["fulltext"]) # drop rows where we don't have full texts
@@ -172,20 +172,21 @@ def convert_df_to_training_data(path="RoB_data.csv", study_range=None):
     return pd.DataFrame(d)
 
 
-def put_together(outpath="RoB-data-2-all.csv"):
+
+def put_together(outpath="data/RoB-data-2-all.csv"):
     increment_by = 500
     cur_start, cur_end = 0, 500
-    N = 28432
+    N = 28428
 
     df = None
     while cur_start < N: 
         # print ("cur_start: {0}; cur_end: {1}")
-        cur_df = pd.read_csv("RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
+        cur_df = pd.read_csv("data/RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
 
         if df is None:
             df = cur_df
         else:
-            df = pd.concat(df, cur_df)
+            df = pd.concat([df, cur_df])
         
         cur_start += increment_by
         cur_end += increment_by
@@ -194,6 +195,8 @@ def put_together(outpath="RoB-data-2-all.csv"):
 
 def main():
     formatted_data = convert_df_to_training_data()
+    formatted_data.to_csv("RoB-data-4.csv")
+    
 
     # create a doc_id category: this is PMID where available, else DOI
     # if both unavailable (???) drop
@@ -208,10 +211,12 @@ def main():
     while cur_start < N: 
         # print ("cur_start: {0}; cur_end: {1}")
         formatted_data = convert_df_to_training_data(study_range=[cur_start, cur_end])
-        formatted_data.to_csv("RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
+        formatted_data.to_csv("data/RoB-data-2-{0}--{1}.csv".format(cur_start, cur_end))
         cur_start += increment_by
         cur_end += increment_by
     '''
+
+
 
 def train_dev_test_split(RA_CNN_data_path="data/RoB-data-3-all.csv"):
     ####
@@ -241,6 +246,4 @@ def get_duplicate_ids():
 
 if __name__ == "__main__": 
     main()
-
-
 
