@@ -51,6 +51,13 @@ def read_data(path_to_csv="data/small-data.csv"):
                     ["boa-rationale-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES] + \
                     ["bpp-rationale-{0}".format(outcome_type) for outcome_type in RA_CNN_redux.OUTCOME_TYPES]
     '''
+
+    doc_lbl_map = {"low":np.array([1,0,0]),
+                    "high":np.array([0,1,0]),
+                    "unclear":np.array([0,1,0]), # note that we map high and unclear to the same category!
+                    "unk":np.array([0,0,1])}
+                   
+
     # recall that the assumption now is doc_id is *either* PMID or DOI,
     # we will use the former where available and default to the latter
     # otherwise.
@@ -61,7 +68,14 @@ def read_data(path_to_csv="data/small-data.csv"):
         #doc_label = (doc["doc_lbl"].values[0]+1)/2 # convert to 0/1
         doc_lbl_dict = {}
         for dj in doc_judgments:
-            doc_lbl_dict[dj] = doc[dj]
+            if not doc[dj].unique().shape[0]==1:
+                print("??!?!")
+                import pdb; pdb.set_trace()
+
+            # note that the doc level label is just repeated;
+            # so we take the first
+            assert(doc[dj].unique().shape[0]==1)
+            doc_lbl_dict["doc_prediction_"+dj] = doc_lbl_map[doc[dj].values[0]]
 
         sentences = doc["sentence"].values
         sentence_label_dicts = []
@@ -142,9 +156,9 @@ def line_search_train(data_path, wvs_path, documents=None, test_mode=False,
 
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
                                 model_name="rationale-CNN", 
-                                nb_epoch_sentences=20, nb_epoch_doc=25, val_split=.2,
+                                nb_epoch_sentences=1, nb_epoch_doc=25, val_split=.5,
                                 sentence_dropout=0.5, document_dropout=0.5, run_name="RSG",
-                                shuffle_data=False, max_features=20000, 
+                                shuffle_data=True, max_features=20000, 
                                 max_sent_len=25, max_doc_len=200,
                                 n_filters=32,
                                 batch_size=50,
@@ -155,7 +169,8 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     
     
     if documents is None:
-        documents = read_data(path_to_csv=data_path)
+        #documents = read_data(path_to_csv=data_path)
+        documents = read_data()
         if shuffle_data: 
             random.shuffle(documents)
 
@@ -180,6 +195,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
                                         sent_dropout=sentence_dropout, 
                                         doc_dropout=document_dropout,
                                         end_to_end_train=end_to_end_train)
+
 
     ###################################
     # 1. build document model #
@@ -211,6 +227,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 
     doc_weights_path = "%s_%s.hdf5" % (model_name, run_name)
     # doc_model_path   = "%s_%s_model.h5" % (model_name, run_name)    
+
 
     r_CNN.train_document_model(documents, nb_epoch=nb_epoch_doc, 
                                 downsample=downsample,
