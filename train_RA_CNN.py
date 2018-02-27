@@ -143,6 +143,9 @@ def line_search_train(data_path, wvs_path, documents=None, test_mode=False,
 
 
 
+def calculate_performance_on_dev_set(model, dev_df):
+    pass 
+
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
                                 model_name="rationale-CNN", 
                                 nb_epoch_sentences=10, nb_epoch_doc=25, val_split=.1,
@@ -218,6 +221,12 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     # doc_model_path   = "%s_%s_model.h5" % (model_name, run_name)    
 
 
+    # @TODO 2/26/18
+    #   - what is pos_class_weight here?
+    #   - do we need to be setting loss?
+    #   - read in dev set an dmake predictions after
+    #       we load_weights below
+    #   - calculate accuracy but ignore unks!
     r_CNN.train_document_model(documents, nb_epoch=nb_epoch_doc, 
                                 downsample=downsample,
                                 batch_size=batch_size,
@@ -228,6 +237,13 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 
     # load best weights back in
     r_CNN.doc_model.load_weights(doc_weights_path)
+
+    # @TODO 2/26
+    # calculate_performance_on_dev_set(r_CNN, ...)
+    dev_df = read_data("data/splits/dev-df.csv")
+    import pdb; pdb.set_trace()
+
+
     # set the final sentence model, which outputs per-sentence
     # predictions regarding rationales. this is admittedly
     # kind of an awkward way of doing things. but in any case
