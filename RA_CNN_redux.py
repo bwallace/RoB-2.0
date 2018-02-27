@@ -48,6 +48,9 @@ DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
 SENT_OUTCOMES = ["ac-rationale", "rsg-rationale"]  + \
                     ["boa-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
                     ["bpp-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
+
+
+
 class RationaleCNN:
 
     def __init__(self, preprocessor, filters=None, n_filters=32, 
@@ -424,7 +427,8 @@ class RationaleCNN:
 
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
         # we use weighted metrics because we mask samples with "unk" for the label; 
-        # we therefore incur no penalty for these 
+        # we therefore incur no penalty for these
+        #    metrics=[RationaleCNN.mean_weighted_acc], 
         self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], optimizer="adam")
         print(self.doc_model.summary())
 
@@ -449,17 +453,24 @@ class RationaleCNN:
 
 
     def predictions_for_docs(self, docs):
-        predictions = []
+        # @TODO this is way slower then it needs to be
+        predictions_d = {}
+        for output in self.doc_model.outputs:
+            predictions_d[output.name] = []
+
         for doc in docs:
             if doc.sentence_sequences is None:
                 # this will be the usual case
                 doc.generate_sequences(self.preprocessor)
 
             X_doc = np.array([doc.get_padded_sequences(self.preprocessor, labels_too=False)])
-            import pdb; pdb.set_trace()
-            doc_pred = self.doc_model.predict(X_doc)[0][0]
-            predictions.append(doc_pred)
-        return predictions 
+            #import pdb; pdb.set_trace()
+            #doc_pred = self.doc_model.predict(X_doc)[0][0]
+            doc_preds = self.doc_model.predict(X_doc)
+            for output_layer, pred in zip(self.doc_model.outputs, doc_preds):
+                predictions_d[output_layer.name].append(pred)
+
+        return predictions_d
 
     def predict_and_rank_sentences_for_doc(self, doc, num_rationales=3, threshold=0):
         '''
@@ -540,6 +551,11 @@ class RationaleCNN:
 
         return combined_dict
 
+
+    @staticmethod
+    def mean_weighted_acc(y_true, y_pred):
+        import pdb;
+        pdb.set_trace()
 
     @staticmethod
     def _get_val_weights(y_lbl_dict):
@@ -817,12 +833,11 @@ class RationaleCNN:
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
-                                    monitor="val_doc_prediction_ac-doc-judgment_weighted_acc",
+                                    monitor="val_doc_prediction_ac-doc-judgment_weighted_acc", #"mean_weighted_acc",
                                     save_best_only=True,
-                                    mode="min")
+                                    mode="max")#"min")
 
 
-            #import pdb; pdb.set_trace()
 
             doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)
             doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc)
