@@ -755,6 +755,8 @@ class RationaleCNN:
         # one thought: factorize classification in low/high risk and the designation of 
         # objective/v. subjective outcomes
         ####
+        
+        #import pdb; pdb.set_trace()
         if downsample:
             print("downsampling!")
 
