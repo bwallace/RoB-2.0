@@ -448,6 +448,18 @@ class RationaleCNN:
         self.sentence_prob_model = sent_model
 
 
+    def predictions_for_docs(self, docs):
+        predictions = []
+        for doc in docs:
+            if doc.sentence_sequences is None:
+                # this will be the usual case
+                doc.generate_sequences(self.preprocessor)
+
+            X_doc = np.array([doc.get_padded_sequences(self.preprocessor, labels_too=False)])
+            doc_pred = self.doc_model.predict(X_doc)[0][0]
+            predictions.append(doc_pred)
+        return predictions 
+
     def predict_and_rank_sentences_for_doc(self, doc, num_rationales=3, threshold=0):
         '''
         Given a Document instance, make doc-level prediction and return
@@ -806,9 +818,9 @@ class RationaleCNN:
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
-                                    monitor="val_acc",
+                                    monitor="val_weighted_loss",
                                     save_best_only=True,
-                                    mode="max")
+                                    mode="min")
 
 
             #import pdb; pdb.set_trace()
