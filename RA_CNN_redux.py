@@ -456,6 +456,7 @@ class RationaleCNN:
                 doc.generate_sequences(self.preprocessor)
 
             X_doc = np.array([doc.get_padded_sequences(self.preprocessor, labels_too=False)])
+            import pdb; pdb.set_trace()
             doc_pred = self.doc_model.predict(X_doc)[0][0]
             predictions.append(doc_pred)
         return predictions 
