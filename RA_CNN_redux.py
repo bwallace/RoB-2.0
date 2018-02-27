@@ -781,10 +781,8 @@ class RationaleCNN:
         # one thought: factorize classification in low/high risk and the designation of 
         # objective/v. subjective outcomes
         ####
+        
 
-        ####
-        # 2/26 - downsample seems to be false
-        # 
         if downsample:
             print("downsampling!")
 
