@@ -202,7 +202,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     if model_name == "rationale-CNN":
         if nb_epoch_sentences > 0:
             print("pre-training sentence model for %s epochs..." % nb_epoch_sentences)
-            r_CNN.train_sentence_model(documents, nb_epoch=nb_epoch_sentences, 
+            r_CNN.train_sentence_model(documents,  nb_epoch=nb_epoch_sentences, 
                                         sent_val_split=val_split, downsample=True)
             print("done.")
 
