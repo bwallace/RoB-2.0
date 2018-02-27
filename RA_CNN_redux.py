@@ -708,6 +708,18 @@ class RationaleCNN:
                                         loss="binary_crossentropy", optimizer="adadelta")
         '''
 
+    @staticmethod
+    def get_sample_weights_for_docs(lbl_dict):
+        sample_weights_dict = {}
+        for lbl in lbl_dict:
+            # create a vector such that weights for unk entries are 0.
+            cur_y_v = lbl_dict[lbl]
+            masked_y = np.ones(cur_y_v.shape[0])
+            masked_y[np.where(cur_y_v[:,-1] == 1)[0]] = 0 
+            sample_weights_dict[lbl] = masked_y
+            #import pdb; pdb.set_trace()
+        return sample_weights_dict
+
     def train_document_model(self, train_documents, nb_epoch=5, downsample=False, 
                                 doc_val_split=.2, batch_size=50,
                                 document_model_weights_path="document_model_weights.hdf5",
@@ -755,6 +767,10 @@ class RationaleCNN:
         # one thought: factorize classification in low/high risk and the designation of 
         # objective/v. subjective outcomes
         ####
+
+        ####
+        # 2/26 - downsample seems to be false
+        # 
         if downsample:
             print("downsampling!")
 
@@ -791,9 +807,13 @@ class RationaleCNN:
 
 
             #import pdb; pdb.set_trace()
+
+            doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)
+            doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc)
             hist = self.doc_model.fit(X_doc, y_doc, 
                         epochs=nb_epoch, 
-                        validation_data=(X_doc_validation, y_doc_validation),
+                        validation_data=(X_doc_validation, y_doc_validation, doc_val_weights),
+                        sample_weight=doc_weights,
                         callbacks=[checkpointer],
                         batch_size=batch_size)
 
