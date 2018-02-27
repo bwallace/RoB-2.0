@@ -454,9 +454,10 @@ class RationaleCNN:
 
     def predictions_for_docs(self, docs):
         # @TODO this is way slower then it needs to be
-        predictions_d = {}
-        for output in self.doc_model.outputs:
-            predictions_d[output.name] = []
+        doc_predictions = []
+        output_names = [o.split("/")[0] for o in self.doc_model.outputs]
+        #for output in self.doc_model.outputs:
+        #    predictions_d[output.name] = []
 
         for doc in docs:
             if doc.sentence_sequences is None:
@@ -467,8 +468,10 @@ class RationaleCNN:
             #import pdb; pdb.set_trace()
             #doc_pred = self.doc_model.predict(X_doc)[0][0]
             doc_preds = self.doc_model.predict(X_doc)
-            for output_layer, pred in zip(self.doc_model.outputs, doc_preds):
-                predictions_d[output_layer.name].append(pred)
+            doc_preds = dict(zip(output_names, doc_preds))
+            doc_predictions.append(doc_preds)
+            #for output_layer, pred in zip(self.doc_model.outputs, doc_preds):
+            #    predictions_d[output_layer.name].append(pred)
 
         return predictions_d
 
