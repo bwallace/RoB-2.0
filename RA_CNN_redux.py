@@ -425,7 +425,7 @@ class RationaleCNN:
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
         # we use weighted metrics because we mask samples with "unk" for the label; 
         # we therefore incur no penalty for these 
-        self.doc_model.compile(loss=doc_losses, weighted_metrics=['loss', 'acc'], optimizer="adam")
+        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], optimizer="adam")
         print(self.doc_model.summary())
 
 
