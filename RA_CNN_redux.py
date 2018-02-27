@@ -423,7 +423,9 @@ class RationaleCNN:
             doc_losses.append("categorical_crossentropy")
 
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
-        self.doc_model.compile(loss=doc_losses, metrics=['acc'], weighted_metrics=['acc'], optimizer="adam")
+        # we use weighted metrics because we mask samples with "unk" for the label; 
+        # we therefore incur no penalty for these 
+        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], optimizer="adam")
         print(self.doc_model.summary())
 
 
