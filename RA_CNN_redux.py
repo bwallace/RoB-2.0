@@ -423,7 +423,7 @@ class RationaleCNN:
             doc_losses.append("categorical_crossentropy")
 
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
-        self.doc_model.compile(loss=doc_losses, metrics=['acc'], optimizer="adam")
+        self.doc_model.compile(loss=doc_losses, metrics=['acc'], weighted_metrics=['acc'], optimizer="adam")
         print(self.doc_model.summary())
 
 
@@ -798,6 +798,9 @@ class RationaleCNN:
 
 
         else:
+
+
+
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
