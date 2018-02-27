@@ -473,7 +473,7 @@ class RationaleCNN:
             #for output_layer, pred in zip(self.doc_model.outputs, doc_preds):
             #    predictions_d[output_layer.name].append(pred)
 
-        return predictions_d
+        return doc_predictions
 
     def predict_and_rank_sentences_for_doc(self, doc, num_rationales=3, threshold=0):
         '''
