@@ -455,7 +455,7 @@ class RationaleCNN:
     def predictions_for_docs(self, docs):
         # @TODO this is way slower then it needs to be
         doc_predictions = []
-        output_names = [o.split("/")[0] for o in self.doc_model.outputs]
+        output_names = [o.name.split("/")[0] for o in self.doc_model.outputs]
         #for output in self.doc_model.outputs:
         #    predictions_d[output.name] = []
 
