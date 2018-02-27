@@ -425,7 +425,7 @@ class RationaleCNN:
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
         # we use weighted metrics because we mask samples with "unk" for the label; 
         # we therefore incur no penalty for these 
-        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], optimizer="adam")
+        self.doc_model.compile(loss=doc_losses, weighted_metrics=['loss', 'acc'], optimizer="adam")
         print(self.doc_model.summary())
 
 
@@ -816,7 +816,7 @@ class RationaleCNN:
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
-                                    monitor="val_weighted_loss",
+                                    monitor="val_doc_prediction_ac-doc-judgment_weighted_acc",
                                     save_best_only=True,
                                     mode="min")
 
