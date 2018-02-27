@@ -240,7 +240,8 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 
     # @TODO 2/26
     # calculate_performance_on_dev_set(r_CNN, ...)
-    dev_df = read_data("data/splits/dev-df.csv")
+    dev_docs = read_data("data/splits/dev-df.csv")
+    dev_preds = r_CNN.predictions_for_docs(dev_docs)
     import pdb; pdb.set_trace()
 
 
