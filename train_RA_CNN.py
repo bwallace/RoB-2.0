@@ -152,12 +152,19 @@ def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df
         for domain in doc.doc_y_dict:
             # the last entry is "unk", in which case we 
             # ignore this entry
-            if doc.doc_y_dict[domain][-1] != 1:
-                pass 
+            y = np.argmax(doc.doc_y_dict[domain])
+            if y != 2:
                 # figure out max of first two entries in
                 # predictions vector, treat as prediction
-                y_hat = doc_preds[domain]
-                import pdb; pdb.set_trace()
+                y_hat = np.argmax(doc_preds[domain][:2])
+                if y == y_hat:
+                    acc_dicts[domain].append(1)
+                else:
+                    acc_dicts[domain].append(0)
+
+    for domain in acc_dicts:
+        acc_dicts[domain] = np.array(acc_dicts[domain]).sum() / len(acc_dicts[domain])
+    return acc_dicts
 
 
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
@@ -254,7 +261,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 
     # @TODO 2/26
     calculate_performance_on_dev_set(r_CNN)
-
+    import pdb; pdb.set_trace()
     # @TODO 2/28
     # now actually calculate perf with preds!
     #  also: maybe update what you monitor in the callback with a custom metric
