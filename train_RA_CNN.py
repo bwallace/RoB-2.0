@@ -143,8 +143,21 @@ def line_search_train(data_path, wvs_path, documents=None, test_mode=False,
 
 
 
-def calculate_performance_on_dev_set(model, dev_df):
-    pass 
+def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df.csv"):
+    dev_docs = read_data(path_to_dev_data)
+    acc_dicts = defaultdict(list)
+    dev_preds = r_CNN.predictions_for_docs(dev_docs)
+    for (doc_preds, doc) in zip(dev_preds, dev_docs):
+        for domain in doc.doc_y_dict:
+            # the last entry is "unk", in which case we 
+            # ignore this entry
+            if doc.doc_y_dict[domain][-1] != 1:
+                pass 
+                # figure out max of first two entries in
+                # predictions vector, treat as prediction
+                y_hat = doc_preds[domain]
+                import pdb; pdb.set_trace()
+
 
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
                                 model_name="rationale-CNN", 
@@ -239,9 +252,13 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     r_CNN.doc_model.load_weights(doc_weights_path)
 
     # @TODO 2/26
-    # calculate_performance_on_dev_set(r_CNN, ...)
-    dev_docs = read_data("data/splits/dev-df.csv")
-    dev_preds = r_CNN.predictions_for_docs(dev_docs)
+    calculate_performance_on_dev_set(r_CNN)
+
+    # @TODO 2/28
+    # now actually calculate perf with preds!
+    #  also: maybe update what you monitor in the callback with a custom metric
+
+
     import pdb; pdb.set_trace()
 
 
