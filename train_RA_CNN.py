@@ -260,15 +260,14 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     r_CNN.doc_model.load_weights(doc_weights_path)
 
     # @TODO 2/26
-    calculate_performance_on_dev_set(r_CNN)
-    import pdb; pdb.set_trace()
+    dev_results = calculate_performance_on_dev_set(r_CNN)
+    
     # @TODO 2/28
     # now actually calculate perf with preds!
     #  also: maybe update what you monitor in the callback with a custom metric
 
-
-    import pdb; pdb.set_trace()
-
+    return pd.DataFrame(dev_results, index=[0])
+    '''
 
     # set the final sentence model, which outputs per-sentence
     # predictions regarding rationales. this is admittedly
@@ -287,7 +286,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
     # r_CNN.doc_model.save(doc_model_path) # both architecture & weights
     return r_CNN, documents, p
 
-
+    '''
 
 if __name__ == "__main__": 
     parser = optparse.OptionParser()
