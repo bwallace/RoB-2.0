@@ -152,10 +152,13 @@ def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df
         for domain in doc.doc_y_dict:
             # the last entry is "unk", in which case we 
             # ignore this entry
+            if domain not in doc_preds:
+                import pdb; pdb.set_trace()
             y = np.argmax(doc.doc_y_dict[domain])
             if y != 2:
                 # figure out max of first two entries in
                 # predictions vector, treat as prediction
+
                 y_hat = np.argmax(doc_preds[domain][:2])
                 if y == y_hat:
                     acc_dicts[domain].append(1)
