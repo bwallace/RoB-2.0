@@ -319,7 +319,7 @@ class RationaleCNN:
         print(self.doc_model.summary())
 
 
-    def build_RA_CNN_model(self):
+    def build_RA_CNN_model(self, domains_to_weights=None):
         # input dim is (max_doc_len x max_sent_len) -- eliding the batch size
         tokens_input = Input(name='input', 
                             shape=(self.preprocessor.max_doc_len, self.preprocessor.max_sent_len), 
@@ -408,7 +408,11 @@ class RationaleCNN:
 
         #####
         # Now, we build a doc-level output for each outcome type
-        doc_outputs, doc_losses = [], []
+        doc_outputs, doc_losses, doc_loss_weights = [], [], []
+        domains_to_weights = {'ac-doc-judgment': 0.063, 
+                              'rsg-doc-judgment': 0.332, 
+                              'boa-doc-judgment-all': 0.903, 
+                              'bpp-doc-judgment-all': 1.0}
         for (sent_output_str, doc_output_str) in zip(SENT_OUTCOMES, DOC_OUTCOMES):
             ## need to access layer named "sentence_predictions-{0}".format(sent_output_name)
             sent_weights_for_outcome = outcomes_to_sent_models[sent_output_str]
@@ -425,13 +429,14 @@ class RationaleCNN:
             # output space is: [low, high/unclear, missing]
             doc_output_for_outcome = Dense(3, activation="softmax", name="doc_prediction_{0}".format(doc_output_str))(doc_vector_for_outcome)
             doc_outputs.append(doc_output_for_outcome)
+            doc_loss_weights.append(domains_to_weights[doc_output_str])
             doc_losses.append("categorical_crossentropy")
 
         self.doc_model = Model(inputs=tokens_input, outputs=doc_outputs)
         # we use weighted metrics because we mask samples with "unk" for the label; 
         # we therefore incur no penalty for these
         #    metrics=[RationaleCNN.mean_weighted_acc], 
-        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], optimizer="adam")
+        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer="adam")
         print(self.doc_model.summary())
 
 
