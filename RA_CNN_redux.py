@@ -41,7 +41,7 @@ from keras.regularizers import l2
 # OUTCOME_TYPES = ["all", "mortality", "objective", "subjective"]
 # 2/26 -- for now, just doing all.
 OUTCOME_TYPES = ["all"]
-'''
+
 DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
                     ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
                     ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
@@ -49,12 +49,9 @@ DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
 SENT_OUTCOMES = ["ac-rationale", "rsg-rationale"]  + \
                     ["boa-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
                     ["bpp-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
-'''
 
-# 3/2/18: experimenting with *just* BPP
-DOC_OUTCOMES = ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
-            
-SENT_OUTCOMES = ["bpp-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
+
+
 
 class RationaleCNN:
 
@@ -748,16 +745,43 @@ class RationaleCNN:
         '''
 
     @staticmethod
-    def get_sample_weights_for_docs(lbl_dict):
+    def get_sample_weights_for_docs(lbl_dict, output_weight_dict=None):
         sample_weights_dict = {}
         for lbl in lbl_dict:
             # create a vector such that weights for unk entries are 0.
             cur_y_v = lbl_dict[lbl]
-            masked_y = np.ones(cur_y_v.shape[0])
+            domain_scalar = 1.0
+            if output_weight_dict is not None:
+                domain_scalar = output_weight_dict[lbl]
+
+            masked_y = np.ones(cur_y_v.shape[0]) * domain_scalar
             masked_y[np.where(cur_y_v[:,-1] == 1)[0]] = 0 
             sample_weights_dict[lbl] = masked_y
-            #import pdb; pdb.set_trace()
         return sample_weights_dict
+
+    @staticmethod
+    def get_per_domain_weights(y_doc_dict):
+        '''
+        return a dictionary mapping domains to weights,
+        which are inversely proportional to the amount of
+        data for the respective domain.
+        '''
+        total_unks = 0
+        domains_to_unk_counts = {}
+        for domain in y_doc_dict:
+            # a vector with [#n_neg, #n_pos, #unk]
+            domain_v = np.sum(y_doc_dict[domain], axis=0)
+            num_unks_for_domain = domain_v[-1]
+            total_unks += num_unks_for_domain
+            domains_to_unk_counts[domain] = num_unks_for_domain
+
+        max_unks = np.max(list(domains_to_unk_counts.values()))
+        #import pdb; pdb.set_trace()
+        # now normalize
+        for domain in domains_to_unk_counts:
+            domains_to_unk_counts[domain] = domains_to_unk_counts[domain] / max_unks
+        return domains_to_unk_counts
+
 
     def train_document_model(self, train_documents, nb_epoch=5, downsample=False, 
                                 doc_val_split=.2, batch_size=50,
@@ -780,6 +804,9 @@ class RationaleCNN:
         X_doc = np.array(X_doc)
         y_doc = RationaleCNN._combine_dicts(y_doc_dicts, convert_to_np_arrs=True, 
                                                          expand_dims=False)
+        domains_to_weights = RationaleCNN.get_per_domain_weights(y_doc)
+
+        #import pdb; pdb.set_trace()
 
         ####
         # @TODO refactor (rather redundant with above...)
@@ -847,8 +874,9 @@ class RationaleCNN:
 
 
 
-            doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)
-            doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc)
+            doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation, domains_to_weights)
+            doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc, domains_to_weights)
+            #import pdb; pdb.set_trace()
             hist = self.doc_model.fit(X_doc, y_doc, 
                         epochs=nb_epoch, 
                         validation_data=(X_doc_validation, y_doc_validation, doc_val_weights),
