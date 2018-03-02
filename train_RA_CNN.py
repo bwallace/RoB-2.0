@@ -147,6 +147,7 @@ def line_search_train(data_path, wvs_path, documents=None, test_mode=False,
 def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df.csv"):
     dev_docs = read_data(path_to_dev_data)
     acc_dicts = defaultdict(list)
+    pred_dicts = defaultdict(list)
     dev_preds = r_CNN.predictions_for_docs(dev_docs)
     for (doc_preds, doc) in zip(dev_preds, dev_docs):
         for domain in doc.doc_y_dict:
@@ -160,12 +161,13 @@ def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df
                 # predictions vector, treat as prediction
 
                 y_hat = np.argmax(doc_preds[domain][:2])
+                pred_dicts[domain].append(y_hat)
                 if y == y_hat:
                     acc_dicts[domain].append(1)
                 else:
                     acc_dicts[domain].append(0)
 
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     for domain in acc_dicts:
         acc_dicts[domain] = np.array(acc_dicts[domain]).sum() / len(acc_dicts[domain])
     return acc_dicts
