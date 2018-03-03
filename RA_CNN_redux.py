@@ -152,10 +152,13 @@ class RationaleCNN:
         return tuple((1, shape[-1]))
 
 
+
+
     @staticmethod
     def balanced_sample_MT(X, y_sent_lbls_dict, doc_idx, sentences=None, r=1, n_rows=None):
         '''
-        
+        This draws a balanced sample of sentences. 
+
         Note: because of the way the sentence label dictionary is structured, we accept here
         the entire label dict; meaning this ranges over all documents; but this method operates
         over one doc at a time. Its index is doc_idx. 
@@ -194,6 +197,9 @@ class RationaleCNN:
 
         return X[train_indices,:], y_sent_balanced_dict
 
+    @staticmethod
+    def balanced_sample_across_domains(X, y_doc_lbl):
+        pass 
 
     @staticmethod
     def balanced_sample(X, y, sentences=None, binary=False, k=1, n_rows=None):
@@ -472,7 +478,7 @@ class RationaleCNN:
                 doc.generate_sequences(self.preprocessor)
 
             X_doc = np.array([doc.get_padded_sequences(self.preprocessor, labels_too=False)])
-            #import pdb; pdb.set_trace()
+            
             #doc_pred = self.doc_model.predict(X_doc)[0][0]
             doc_preds = self.doc_model.predict(X_doc)
             doc_preds = dict(zip(output_names, doc_preds))
@@ -695,7 +701,11 @@ class RationaleCNN:
                                                                     n_rows=n_target_rows)
 
                 X_temp.append(X_doc_i_temp)
+                #import pdb; pdb.set_trace()
 
+                # @TODO note that there will be a pretty big imbalance here
+                # w.r.t. sentence label types (domains) that we are not 
+                # currently accounting for. may want to do stratified sampling.
                 for sent_lbl in y_sent_lbls_dict:
                     y_sent_temp[sent_lbl].append(np.array(y_sent_i_lbl_dict_temp[sent_lbl]))
         
@@ -811,7 +821,7 @@ class RationaleCNN:
                                                          expand_dims=False)
         domains_to_weights = RationaleCNN.get_per_domain_weights(y_doc)
 
-        #import pdb; pdb.set_trace()
+        
 
         ####
         # @TODO refactor (rather redundant with above...)
@@ -850,7 +860,8 @@ class RationaleCNN:
 
                 print ("on epoch: %s" % iter_)
 
-                X_tmp, y_tmp = RationaleCNN.balanced_sample(X_doc, y_doc, binary=True)
+                #import pdb; pdb.set_trace()
+                X_tmp, y_tmp = RationaleCNN.balanced_sample_across_domains(X_doc, y_doc, binary=True)
 
                 self.doc_model.fit(X_tmp, y_tmp, batch_size=batch_size, epochs=1,
                                          class_weight={0:1, 1:pos_class_weight})
@@ -873,7 +884,7 @@ class RationaleCNN:
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
-                                    monitor="doc_prediction_boa-doc-judgment-all", #"mean_weighted_acc",
+                                    monitor="doc_prediction_boa-doc-judgment-all_weighted_acc", #"mean_weighted_acc",
                                     save_best_only=True,
                                     mode="max")#"min")
 
@@ -881,7 +892,7 @@ class RationaleCNN:
 
             doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation, domains_to_weights)
             doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc, domains_to_weights)
-            #import pdb; pdb.set_trace()
+            
             hist = self.doc_model.fit(X_doc, y_doc, 
                         epochs=nb_epoch, 
                         validation_data=(X_doc_validation, y_doc_validation, doc_val_weights),
