@@ -167,7 +167,7 @@ def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df
                 else:
                     acc_dicts[domain].append(0)
 
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     for domain in acc_dicts:
         acc_dicts[domain] = np.array(acc_dicts[domain]).sum() / len(acc_dicts[domain])
     return acc_dicts
