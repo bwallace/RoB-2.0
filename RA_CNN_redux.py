@@ -860,11 +860,15 @@ class RationaleCNN:
 
                 print ("on epoch: %s" % iter_)
 
-                #import pdb; pdb.set_trace()
                 X_tmp, y_tmp = RationaleCNN.balanced_sample_across_domains(X_doc, y_doc, binary=True)
+                import pdb; pdb.set_trace()
 
                 self.doc_model.fit(X_tmp, y_tmp, batch_size=batch_size, epochs=1,
                                          class_weight={0:1, 1:pos_class_weight})
+
+                '''
+                take weighted sum here
+                '''
 
                 cur_val_results = self.doc_model.evaluate(X_doc_validation, y_doc_validation)
                 out_str = ["%s: %s" % (metric, val) for metric, val in zip(self.doc_model.metrics_names, cur_val_results)]
@@ -890,7 +894,7 @@ class RationaleCNN:
 
 
 
-            doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation, domains_to_weights)
+            doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)#, domains_to_weights)
             doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc, domains_to_weights)
             
             hist = self.doc_model.fit(X_doc, y_doc, 
