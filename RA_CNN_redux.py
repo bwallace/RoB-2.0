@@ -884,7 +884,7 @@ class RationaleCNN:
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
-                                    monitor="doc_prediction_boa-doc-judgment-all_weighted_acc", #"mean_weighted_acc",
+                                    monitor="val_doc_prediction_boa-doc-judgment-all_weighted_acc", #"mean_weighted_acc",
                                     save_best_only=True,
                                     mode="max")#"min")
 
