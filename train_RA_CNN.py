@@ -176,7 +176,7 @@ def calculate_performance_on_dev_set(r_CNN, path_to_dev_data="data/splits/dev-df
 def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=False, 
                                 model_name="rationale-CNN", 
                                 nb_epoch_sentences=10, nb_epoch_doc=25, val_split=.1,
-                                sentence_dropout=0.5, document_dropout=0.5, run_name="RSG",
+                                sentence_dropout=0.5, document_dropout=0.5, run_name="RoB-redux",
                                 shuffle_data=True, max_features=20000, 
                                 max_sent_len=25, max_doc_len=200,
                                 n_filters=32,
@@ -327,7 +327,7 @@ if __name__ == "__main__":
 
     parser.add_option('--n', '--name', dest="run_name",
         help="name of run (e.g., `movies')", 
-        default="movies")
+        default="RoB-redux")
 
     parser.add_option('--tm', '--test-mode', dest="test_mode",
         help="run in test mode?", action='store_true', default=False)
@@ -337,11 +337,11 @@ if __name__ == "__main__":
 
     parser.add_option('--mdl', '--max-doc-length', dest="max_doc_len",
         help="maximum length (in sentences) of a given doc", 
-        default=50, type="int")
+        default=200, type="int")
 
     parser.add_option('--msl', '--max-sent-length', dest="max_sent_len",
         help="maximum length (in tokens) of a given sentence", 
-        default=10, type="int")
+        default=25, type="int")
 
     parser.add_option('--mf', '--max-features', dest="max_features",
         help="maximum number of unique tokens", 
@@ -361,7 +361,7 @@ if __name__ == "__main__":
 
     parser.add_option('--tr', '--end-to-end-train', dest="end_to_end_train",
         help="continue training sentence softmax parameters?", 
-        action='store_true', default=False)
+        action='store_true', default=True)
 
     parser.add_option('--ls', '--line-search', dest="line_search_sent_dropout",
         help="line search over sentence dropout parameter?", 
@@ -369,7 +369,7 @@ if __name__ == "__main__":
 
     parser.add_option('--ds', '--downsample', dest="downsample",
         help="create balanced mini-batches during training?", 
-        action='store_true', default=False)
+        action='store_true', default=False) # TODO change to True?
 
     parser.add_option('--sw', '--stopword', dest="stopword",
         help="performing stopwording?", 

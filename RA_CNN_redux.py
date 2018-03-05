@@ -6,6 +6,7 @@ RoB 2.0: including outcome-type specific decisions.
 
 from __future__ import print_function
 import pdb
+from collections import defaultdict
 import sys 
 try:
     reload(sys)
@@ -199,7 +200,40 @@ class RationaleCNN:
 
     @staticmethod
     def balanced_sample_across_domains(X, y_doc_lbl):
-        pass 
+        '''
+        Sample and return X', y' such that domains have an equal
+        representation of known designations (i.e., the number of unks
+        in each domain is roughly balanced)
+        '''
+        ### 
+        # note: y_doc_lbl is a dictionary pointing from domains to 3d 
+        # one-hot label vectors
+        ###
+        domains_to_non_unks = {} # domains -> non-unk indices
+        for domain, domain_v in y_doc_lbl.items():
+            unk_indicators = domain_v[:, 2]
+            # i.e., those that are not unk
+            non_missing_for_domain = np.logical_not(unk_indicators).astype(int)
+            domains_to_non_unks[domain] = np.where(non_missing_for_domain>0)[0]
+
+        # now sample such that there is equal representation
+        # in particular we will sample n non-unk examples
+        # per domain (with resplacement)
+        m = np.min([v.shape[0] for v in domains_to_non_unks.values()])
+
+        indices = []
+        for domain, domain_observed_v in domains_to_non_unks.items():
+            indices.extend(np.random.choice(domain_observed_v, m))
+
+        indices = np.array(list(set(indices)))
+        y_doc_samples = {}
+        for domain in y_doc_lbl: 
+            y_doc_samples[domain] = y_doc_lbl[domain][indices]
+
+        #import pdb; pdb.set_trace()
+        return X[indices], y_doc_samples
+
+
 
     @staticmethod
     def balanced_sample(X, y, sentences=None, binary=False, k=1, n_rows=None):
@@ -465,9 +499,26 @@ class RationaleCNN:
         self.sentence_prob_model = sent_model
 
 
+
+    def calculate_metrics(self, y_hat, y):
+        acc_dicts = defaultdict(list)
+        for domain in y.keys():
+
+            y_ind = np.argmax(y[domain], axis=1)
+            y_hat_ind = np.argmax(y_hat[domain], axis=1)
+            not_unk_indices = np.where(y_ind != 2)[0]
+            y_ind = y_ind[not_unk_indices]
+            y_hat_ind = y_hat_ind[not_unk_indices]
+
+            acc_dicts[domain] = (y_ind == y_hat_ind).sum() / y_ind.shape[0]
+
+        #import pdb; pdb.set_trace()
+        return acc_dicts
+
     def predictions_for_docs(self, docs):
         # @TODO this is way slower then it needs to be
         doc_predictions = []
+        # this is lame
         output_names = [o.name.split("/")[0] for o in self.doc_model.outputs]
         #for output in self.doc_model.outputs:
         #    predictions_d[output.name] = []
@@ -798,6 +849,8 @@ class RationaleCNN:
         return domains_to_unk_counts
 
 
+
+
     def train_document_model(self, train_documents, nb_epoch=5, downsample=False, 
                                 doc_val_split=.2, batch_size=50,
                                 document_model_weights_path="document_model_weights.hdf5",
@@ -853,15 +906,16 @@ class RationaleCNN:
         if downsample:
             print("downsampling!")
 
-            cur_f, best_f = None, -np.inf  # - inf for F-score
+            cur_score, best_score = None, -np.inf  
 
             # then draw nb_epoch balanced samples; take one pass on each
             for iter_ in range(nb_epoch):
 
                 print ("on epoch: %s" % iter_)
 
-                X_tmp, y_tmp = RationaleCNN.balanced_sample_across_domains(X_doc, y_doc, binary=True)
-                import pdb; pdb.set_trace()
+                
+                X_tmp, y_tmp = RationaleCNN.balanced_sample_across_domains(X_doc, y_doc)
+                
 
                 self.doc_model.fit(X_tmp, y_tmp, batch_size=batch_size, epochs=1,
                                          class_weight={0:1, 1:pos_class_weight})
@@ -869,7 +923,27 @@ class RationaleCNN:
                 '''
                 take weighted sum here
                 '''
+                
 
+                y_hat = self.doc_model.predict(X_doc_validation)
+                # need to force pred of either 0/1 -- i.e., no predicting 'unk'!
+
+                o_names = [o.name.split("/Softmax")[0] for o in self.doc_model.outputs]
+                y_hat = dict(zip(o_names, y_hat))
+
+                acc_dicts = self.calculate_metrics(y_doc_validation, y_hat)
+                cur_score = sum(acc_dicts.values())
+                print ("accuracy dicts: {0}".format(acc_dicts))
+                print("cur score: {0}".format(cur_score))
+                print("best score: {0}".format(best_score))
+
+                if cur_score > best_score:
+                    best_score = cur_score
+                    self.doc_model.save_weights(document_model_weights_path, overwrite=True)
+                    print("new best score!!!: %s\n" % best_score)
+
+                '''
+                doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)
                 cur_val_results = self.doc_model.evaluate(X_doc_validation, y_doc_validation)
                 out_str = ["%s: %s" % (metric, val) for metric, val in zip(self.doc_model.metrics_names, cur_val_results)]
                 print ("\n".join(out_str))
@@ -879,7 +953,7 @@ class RationaleCNN:
                     best_f = cur_f
                     self.doc_model.save_weights(document_model_weights_path, overwrite=True)
                     print("new best F: %s\n" % best_f)
-
+                '''
 
         else:
 
