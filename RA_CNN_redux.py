@@ -500,7 +500,8 @@ class RationaleCNN:
 
 
 
-    def calculate_metrics(self, y_hat, y):
+    # TODO need to force model to not predict unk...
+    def calculate_metrics(self, y, y_hat):
         acc_dicts = defaultdict(list)
         for domain in y.keys():
 
@@ -511,6 +512,8 @@ class RationaleCNN:
             y_hat_ind = y_hat_ind[not_unk_indices]
 
             acc_dicts[domain] = (y_ind == y_hat_ind).sum() / y_ind.shape[0]
+
+            #import pdb; pdb.set_trace()
 
         #import pdb; pdb.set_trace()
         return acc_dicts
@@ -850,6 +853,16 @@ class RationaleCNN:
 
 
 
+    def doc_predict_no_unks(self, X):
+        # make predictions; lop off "unk" (last label)
+        y_hat = self.doc_model.predict(X) 
+        # now remove unk predictions
+        y_hat_no_unks = []
+        for y_hat_d in y_hat:
+            y_hat_no_unks.append(y_hat_d[:,:-1])
+
+        return y_hat_no_unks
+
 
     def train_document_model(self, train_documents, nb_epoch=5, downsample=False, 
                                 doc_val_split=.2, batch_size=50,
@@ -926,6 +939,12 @@ class RationaleCNN:
                 
 
                 y_hat = self.doc_model.predict(X_doc_validation)
+
+                # drop any unk predictions!
+                
+
+                y_hat = self.doc_predict_no_unks(X_doc_validation)
+
                 # need to force pred of either 0/1 -- i.e., no predicting 'unk'!
 
                 o_names = [o.name.split("/Softmax")[0] for o in self.doc_model.outputs]
