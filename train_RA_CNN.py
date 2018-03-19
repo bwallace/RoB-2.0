@@ -294,6 +294,13 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 
     '''
 
+# @TODO make this nice again (i.e., w/args...)
+if __name__ == "__main__": 
+
+    train_CNN_rationales_model("data/splits/train-df.csv", "/home/byron/data/PubMed-w2v.bin",nb_epoch_sentences=10, nb_epoch_doc=300, end_to_end_train=True, downsample=True)
+
+
+'''
 if __name__ == "__main__": 
     parser = optparse.OptionParser()
 
@@ -359,7 +366,7 @@ if __name__ == "__main__":
         help="batch size", 
         default=50, type="int")
 
-    parser.add_option('--tr', '--end-to-end-train', dest="end_to_end_train",
+    parser.add_option('--tr', '--end-to-end-train', dest="exitllll_train",
         help="continue training sentence softmax parameters?", 
         action='store_true', default=True)
 
@@ -436,3 +443,4 @@ if __name__ == "__main__":
                                     downsample=options.downsample,
                                     stopword=options.stopword,
                                     pos_class_weight=options.pos_class_weight)
+'''
