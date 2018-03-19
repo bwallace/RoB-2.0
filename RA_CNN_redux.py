@@ -19,6 +19,7 @@ import random
 
 import numpy as np
 
+from keras import optimizers
 from keras.optimizers import SGD, RMSprop
 from keras import backend as K 
 K.set_image_dim_ordering("th")
