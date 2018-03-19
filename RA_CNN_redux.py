@@ -930,6 +930,7 @@ class RationaleCNN:
                 X_tmp, y_tmp = RationaleCNN.balanced_sample_across_domains(X_doc, y_doc)
                 
 
+
                 self.doc_model.fit(X_tmp, y_tmp, batch_size=batch_size, epochs=1,
                                          class_weight={0:1, 1:pos_class_weight})
 
@@ -960,6 +961,8 @@ class RationaleCNN:
                     best_score = cur_score
                     self.doc_model.save_weights(document_model_weights_path, overwrite=True)
                     print("new best score!!!: %s\n" % best_score)
+
+                import pdb; pdb.set_trace()
 
                 '''
                 doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)
