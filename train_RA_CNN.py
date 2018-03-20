@@ -297,7 +297,10 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 # @TODO make this nice again (i.e., w/args...)
 if __name__ == "__main__": 
 
-    train_CNN_rationales_model("data/splits/train-df.csv", "/home/byron/data/PubMed-w2v.bin",nb_epoch_sentences=10, nb_epoch_doc=300, end_to_end_train=True, downsample=True)
+    dev_results = train_CNN_rationales_model("data/splits/train-df.csv", "/home/byron/data/PubMed-w2v.bin",nb_epoch_sentences=10, nb_epoch_doc=300, end_to_end_train=True, downsample=False)
+    dev_results.to_csv("dev-results-{0}.csv".format(str(datetime.datetime.now())))
+    print(dev_results)
+
 
 
 '''
