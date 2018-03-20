@@ -298,6 +298,7 @@ def train_CNN_rationales_model(data_path, wvs_path, documents=None, test_mode=Fa
 if __name__ == "__main__": 
 
     dev_results = train_CNN_rationales_model("data/splits/train-df.csv", "/home/byron/data/PubMed-w2v.bin",nb_epoch_sentences=10, nb_epoch_doc=300, end_to_end_train=True, downsample=False)
+    import datetime
     dev_results.to_csv("dev-results-{0}.csv".format(str(datetime.datetime.now())))
     print(dev_results)
 
