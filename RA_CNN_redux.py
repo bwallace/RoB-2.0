@@ -44,6 +44,10 @@ from keras.regularizers import l2
 # 2/26 -- for now, just doing all.
 OUTCOME_TYPES = ["all"]
 
+DOC_OUTCOMES = ["rsg-doc-judgment"]
+SENT_OUTCOMES = ["rsg-doc-judgment"] 
+
+'''
 DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
                     ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
                     ["bpp-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
@@ -52,7 +56,7 @@ SENT_OUTCOMES = ["ac-rationale", "rsg-rationale"]  + \
                     ["boa-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
                     ["bpp-rationale-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES]
 
-
+'''
 
 
 class RationaleCNN:
