@@ -479,10 +479,11 @@ class RationaleCNN:
         #    metrics=[RationaleCNN.mean_weighted_acc], 
 
         # 3/19 -- playing with sgd rather than "adam"
-        sgd = optimizers.SGD(lr=0.01, clipvalue=0.5, clipnorm=1.)#, decay=1e-6, momentum=0.9, nesterov=True)
 
-        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer=sgd)
-        #self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer="adam")
+        #sgd = optimizers.SGD(lr=0.01, clipvalue=0.5, clipnorm=1.)#, decay=1e-6, momentum=0.9, nesterov=True)
+
+        #self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer=sgd)
+        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer="adadelta")
 
         print(self.doc_model.summary())
 
