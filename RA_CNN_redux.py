@@ -44,9 +44,9 @@ from keras.regularizers import l2
 # 2/26 -- for now, just doing all.
 OUTCOME_TYPES = ["all"]
 
+            
 DOC_OUTCOMES = ["rsg-doc-judgment"]
-SENT_OUTCOMES = ["rsg-doc-judgment"] 
-
+SENT_OUTCOMES = ["rsg-rationale"]
 '''
 DOC_OUTCOMES = ["ac-doc-judgment", "rsg-doc-judgment"] + \
                     ["boa-doc-judgment-{0}".format(outcome_type) for outcome_type in OUTCOME_TYPES] + \
@@ -487,8 +487,7 @@ class RationaleCNN:
         #sgd = optimizers.SGD(lr=0.01, clipvalue=0.5, clipnorm=1.)#, decay=1e-6, momentum=0.9, nesterov=True)
 
         #self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer=sgd)
-        self.doc_model.compile(loss=doc_losses, weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer="adadelta")
-
+        self.doc_model.compile(loss=doc_losses, metrics=['acc'], weighted_metrics=['acc'], loss_weights=doc_loss_weights, optimizer="adam")
         print(self.doc_model.summary())
 
 
@@ -589,7 +588,6 @@ class RationaleCNN:
 
     @staticmethod
     def _doc_contains_at_least_one_rationale(sentence_lbl_dicts):
-
         for y_d in sentence_lbl_dicts:
             if any([y_d_j > 0 for y_d_j in y_d.values()]):
                 return True
@@ -786,8 +784,10 @@ class RationaleCNN:
 
             self.sentence_model.fit(X_temp, y_sent_temp, epochs=1)
 
-            
             cur_val_results = self.sentence_model.evaluate(X_doc_validation, y_sent_validation, sample_weight=y_sent_validation_weights)
+            if not (type(cur_val_results) == type([])):
+              cur_val_results = [None, cur_val_results]
+ 
             out_str = ["%s: %s" % (metric, val) for metric, val in zip(self.sentence_model.metrics_names, cur_val_results)]
             print ("\n".join(out_str))
             
@@ -796,7 +796,7 @@ class RationaleCNN:
             non_nan_val_results = [loss_j for loss_j in cur_val_results[1:] if not np.isnan(loss_j)]
             if len(non_nan_val_results) == 0:
                 print("\n\noh dear -- all sentence losses were NaN???!")
-
+            #import pdb; pdb.set_trace()
             total_loss = sum(non_nan_val_results) / len(non_nan_val_results)           
             print ("mean loss: {0}; current best loss: {1}".format(total_loss, best_loss))
             if total_loss < best_loss:
@@ -991,12 +991,12 @@ class RationaleCNN:
 
         else:
 
-
+            import pdb; pdb.set_trace()
 
             # using accuracy here because balanced(-ish) data is assumed.
             checkpointer = ModelCheckpoint(filepath=document_model_weights_path, 
                                     verbose=1,
-                                    monitor="val_doc_prediction_boa-doc-judgment-all_weighted_acc", #"mean_weighted_acc",
+                                    monitor="weighted_acc",#monitor="val_doc_prediction_rsg-doc-judgment_acc",
                                     save_best_only=True,
                                     mode="max")#"min")
 
