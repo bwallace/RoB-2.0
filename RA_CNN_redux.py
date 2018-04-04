@@ -793,7 +793,10 @@ class RationaleCNN:
             
             # ignore nans; I believe this means we just didn't see any such labels
             # we also skip first entry as this is just a sum of the various losses
-            non_nan_val_results = [loss_j for loss_j in cur_val_results[1:] if not np.isnan(loss_j)]
+
+            # 3/26 -- previously was skippig first entry!
+            # non_nan_val_results = [loss_j for loss_j in cur_val_results[1:] if not np.isnan(loss_j)]
+            non_nan_val_results = [loss_j for loss_j in cur_val_results if not np.isnan(loss_j)]
             if len(non_nan_val_results) == 0:
                 print("\n\noh dear -- all sentence losses were NaN???!")
             #import pdb; pdb.set_trace()
@@ -1004,7 +1007,7 @@ class RationaleCNN:
 
             doc_val_weights = RationaleCNN.get_sample_weights_for_docs(y_doc_validation)#, domains_to_weights)
             doc_weights = RationaleCNN.get_sample_weights_for_docs(y_doc, domains_to_weights)
-            
+            import pdb; pdb.set_trace()
             hist = self.doc_model.fit(X_doc, y_doc, 
                         epochs=nb_epoch, 
                         validation_data=(X_doc_validation, y_doc_validation, doc_val_weights),
